@@ -695,6 +695,7 @@ function cloneModelJson(obj) {
 function snapshotModel() {
   return {
     model: state.modelJson ? cloneModelJson(state.modelJson) : null,
+    texSize: texSize,
     tex: textureCtx && textureCanvas ? textureCtx.getImageData(0, 0, textureCanvas.width, textureCanvas.height) : null,
     emi: emissiveCtx && emissiveCanvas ? emissiveCtx.getImageData(0, 0, emissiveCanvas.width, emissiveCanvas.height) : null,
     sel: state.selectedCubeId,
@@ -703,6 +704,35 @@ function snapshotModel() {
 
 function restoreModelSnap(snap) {
   state.modelJson = snap.model ? cloneModelJson(snap.model) : null;
+  // Undo may cross a texture expansion: restore canvas size (and GPU views) BEFORE
+  // putting the old pixels back, or the small snapshot lands on an oversized canvas.
+  if (snap.texSize && textureCanvas && snap.texSize !== texSize) {
+    texSize = snap.texSize;
+    textureCanvas.width = texSize; textureCanvas.height = texSize;
+    textureCtx = textureCanvas.getContext("2d");
+    textureCtx.imageSmoothingEnabled = false;
+    if (emissiveCanvas) {
+      emissiveCanvas.width = texSize; emissiveCanvas.height = texSize;
+      emissiveCtx = emissiveCanvas.getContext("2d");
+      emissiveCtx.imageSmoothingEnabled = false;
+    }
+    const vis = $("texCanvas"), ov = $("texOverlay");
+    if (vis) { vis.width = texSize; vis.height = texSize; }
+    if (ov) { ov.width = texSize; ov.height = texSize; overlayCtx = ov.getContext("2d"); overlayCtx.imageSmoothingEnabled = false; }
+    if (typeof THREE !== "undefined") {
+      if (textureTexture) textureTexture.dispose();
+      textureTexture = new THREE.CanvasTexture(textureCanvas);
+      textureTexture.flipY = false;
+      textureTexture.magFilter = THREE.NearestFilter;
+      if (emissiveTexture) emissiveTexture.dispose();
+      if (emissiveCanvas) {
+        emissiveTexture = new THREE.CanvasTexture(emissiveCanvas);
+        emissiveTexture.flipY = false;
+        emissiveTexture.magFilter = THREE.NearestFilter;
+      }
+    }
+    if (typeof applyTexZoom === "function") applyTexZoom();
+  }
   if (snap.tex && textureCtx) textureCtx.putImageData(snap.tex, 0, 0);
   if (snap.emi && emissiveCtx) emissiveCtx.putImageData(snap.emi, 0, 0);
   state.selectedCubeId = snap.sel;
@@ -741,6 +771,7 @@ function expandTexture(newSize) {
   const old = texSize;
   if (!textureCanvas || newSize <= old) return false;
   const scale = old / newSize;
+  const seenLayouts = new Set();
   allCubes().forEach(({ cube }) => {
     (cube.faces || []).forEach((f) => {
       (f.verts || []).forEach((vt) => {
@@ -748,6 +779,15 @@ function expandTexture(newSize) {
         vt.uv[1] *= scale;
       });
     });
+    // uvLayout rects are PIXEL coordinates — rescale them too, or every later
+    // occupancy/clear/paint lands at stale positions (texture corruption).
+    const L = cube.uvLayout;
+    if (L && !seenLayouts.has(L)) {
+      seenLayouts.add(L);
+      const rs = (r) => { r.x *= scale; r.y *= scale; r.w *= scale; r.h *= scale; };
+      if (L.pieces) L.pieces.forEach(rs);
+      rs(L);
+    }
   });
   const copy = (src) => {
     const tmp = document.createElement("canvas");

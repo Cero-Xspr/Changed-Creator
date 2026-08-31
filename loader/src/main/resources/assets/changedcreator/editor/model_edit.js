@@ -856,6 +856,26 @@ function deleteSelected() {
   setStatus("已删除方块并释放贴图占用" + (group ? "（含镜像）" : ""));
 }
 
+// Toggle: make the selected block the spawn origin ("主体块") for ALL editor-created
+// blocks — at transfur they morph out of its position & size toward their targets,
+// like Changed morphs vanilla cubes out of the body. Clicking again clears it.
+function toggleAnimFrom() {
+  if (!state.modelJson || !state.modelJson.root) { setStatus("没有模型", false); return; }
+  const { cube } = selectedCube();
+  if (!cube || !cube.id) { setStatus("先选中一个方块作为动画出生主体", false); return; }
+  const custom = [];
+  walkParts(state.modelJson.root, (part) => {
+    (part.cubes || []).forEach((c) => { if (c.uvLayout) custom.push(c); });
+  });
+  if (!custom.length) { setStatus("没有新增块（只有原版提取的方块）", false); return; }
+  const allSet = custom.every((c) => c.animFrom === cube.id);
+  pushModelUndo();
+  custom.forEach((c) => { if (allSet) delete c.animFrom; else c.animFrom = cube.id; });
+  setStatus(allSet
+    ? "已取消动画起点（新增块改回从父级关节长出），记得保存"
+    : "动画起点 = 选中块 " + cube.id + "（新增块将从它的位置/大小变换到目标），记得保存");
+}
+
 function applySymmetry() {
   const { cube, part } = selectedCube();
   if (!cube || !part) { setStatus("先选中一个方块", false); return; }
@@ -1070,6 +1090,7 @@ function initCubeEditor() {
   $("btnDelCube").addEventListener("click", deleteSelected);
   $("btnApplySym").addEventListener("click", applySymmetry);
   $("btnUnlinkSym").addEventListener("click", unlinkSymmetry);
+  $("btnAnimFrom").addEventListener("click", toggleAnimFrom);
   $("cubeBind").addEventListener("change", rebindSelected);
   ["cubeX", "cubeY", "cubeZ"].forEach((id) => $(id).addEventListener("change", applyCenterFromInputs));
   ["cubeRX", "cubeRY", "cubeRZ"].forEach((id) => $(id).addEventListener("change", applyRotFromInputs));

@@ -69,6 +69,7 @@ public abstract class TransfurAnimatorMixin {
         if (edited == null || edited.countCustomBlocks() == 0) return;
         ModelPart limbPart = limb.getModelPart(advanced);
         if (limbPart == null) return;
+        ModelPart humanoidPart = limb.getModelPart(humanoid);
         float progress = vi.getTransfurProgression(Minecraft.getInstance().getPartialTick());
 
         int pct = (int) (progress * 100f);
@@ -88,8 +89,8 @@ public abstract class TransfurAnimatorMixin {
         EditedModel.TINT.set(tint);
         try {
             VertexConsumer vc = buffer.getBuffer(RenderType.entitySolid(tintTex));
-            edited.renderLimbSubtree(advanced, limbPart, poseStack, vc, packedLight,
-                    OverlayTexture.NO_OVERLAY, progress);
+            edited.renderLimbSubtree(advanced, limbPart, humanoidPart, morphAlpha, poseStack, vc,
+                    packedLight, OverlayTexture.NO_OVERLAY, progress);
         } finally {
             EditedModel.TINT.set(null);
         }

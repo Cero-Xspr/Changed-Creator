@@ -145,8 +145,13 @@ public final class EditedModel {
     }
 
     public void render(Object model, PoseStack pose, VertexConsumer vc, int light, int overlay, float partialTick, boolean spawnOnly) {
+        render(model, pose, vc, light, overlay, partialTick, spawnOnly, false);
+    }
+
+    /** {@code extractedOnly}: draw only the non-editor cubes (tint cover pass). */
+    public void render(Object model, PoseStack pose, VertexConsumer vc, int light, int overlay, float partialTick, boolean spawnOnly, boolean extractedOnly) {
         Map<String, ModelPart> named = collectNamedParts(model);
-        renderNode(root, named, pose, vc, light, overlay, partialTick, spawnOnly);
+        renderNode(root, named, pose, vc, light, overlay, partialTick, spawnOnly, extractedOnly);
     }
 
     /**
@@ -291,7 +296,7 @@ public final class EditedModel {
         return false;
     }
 
-    private void renderNode(Node node, Map<String, ModelPart> named, PoseStack pose, VertexConsumer vc, int light, int overlay, float partialTick, boolean spawnOnly) {
+    private void renderNode(Node node, Map<String, ModelPart> named, PoseStack pose, VertexConsumer vc, int light, int overlay, float partialTick, boolean spawnOnly, boolean extractedOnly) {
         ModelPart live = named.get(node.name);
         pose.pushPose();
         if (live != null) {
@@ -314,9 +319,10 @@ public final class EditedModel {
         float spawnT = (liveMatched && spawnOnly) ? partialTick : 1f;
         for (Cube cube : node.cubes) {
             if (spawnOnly && !cube.isCustom) continue; // animation: only editor-created blocks
+            if (extractedOnly && cube.isCustom) continue; // cover: only extracted cubes
             cube.emit(pose, vc, light, overlay, spawnT, origin);
         }
-        for (Node child : node.children) renderNode(child, named, pose, vc, light, overlay, partialTick, spawnOnly);
+        for (Node child : node.children) renderNode(child, named, pose, vc, light, overlay, partialTick, spawnOnly, extractedOnly);
         pose.popPose();
     }
 

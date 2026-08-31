@@ -79,30 +79,15 @@ public abstract class TransfurAnimatorMixin {
             com.mojang.logging.LogUtils.getLogger().info("[CC-morph] limb-rendering active, progress={}%", pct);
         }
 
-        // Same color source the morphing body itself uses (our instance mixin makes
-        // getTransfurColor return the user tint for custom variants).
-        float[] tint = color != null
-                ? new float[]{color.red() * 255f, color.green() * 255f, color.blue() * 255f}
-                : null;
-        // Fade the tint blocks OUT over the last ~0.6s of the morph (progress 0.9..1):
-        // the tint cover hands the body back to the real textured model smoothly.
-        float fadeAlpha = 255f;
-        boolean fading = progress >= 0.9f;
-        if (fading) fadeAlpha = Math.max(0f, 1f - (progress - 0.9f) / 0.1f) * 255f;
-        if (fadeAlpha <= 0.5f) return; // fully faded out
-        if (tint != null) tint = new float[]{tint[0], tint[1], tint[2], fadeAlpha};
-        ResourceLocation tintTex = EditedModel.getTintTexture();
-        if (tintTex == null) return;
-        EditedModel.TINT.set(tint);
-        try {
-            // entitySolid while opaque; translucent once fading (vertex alpha needs blending)
-            VertexConsumer vc = buffer.getBuffer(fading
-                    ? RenderType.entityTranslucent(tintTex)
-                    : RenderType.entitySolid(tintTex));
-            edited.renderLimbSubtree(advanced, limbPart, humanoidPart, morphAlpha, poseStack, vc,
-                    packedLight, OverlayTexture.NO_OVERLAY, progress);
-        } finally {
-            EditedModel.TINT.set(null);
-        }
+        // The editor blocks keep their REAL texture during the morph so the spawn
+        // animation is actually visible against the tinted morphing body (tinted
+        // blocks blended into the silhouette and were only seen popping in at the
+        // end). The tint shell is handled by EditedModelLayer's post-morph pass.
+        ResourceLocation tex = FormAppearance.getTextureForForm(formId);
+        if (tex == null) tex = EditedModel.getTintTexture();
+        if (tex == null) return;
+        VertexConsumer vc = buffer.getBuffer(RenderType.entityTranslucent(tex));
+        edited.renderLimbSubtree(advanced, limbPart, humanoidPart, morphAlpha, poseStack, vc,
+                packedLight, OverlayTexture.NO_OVERLAY, progress);
     }
 }

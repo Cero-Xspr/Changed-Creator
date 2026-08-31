@@ -72,7 +72,9 @@ public class EditedModelLayer extends RenderLayer<ChangedEntity, net.ltxprogramm
         VertexConsumer base = buffer.getBuffer(RenderType.entityTranslucent(tex));
         edited.render(this.getParentModel(), poseStack, base, packedLight, OverlayTexture.NO_OVERLAY, 1f, false);
 
-        // Tinted cover, fading out over progress 0.9..1.
+        // Tinted shell over the EXTRACTED cubes only (custom blocks are already
+        // textured, the morph hook draws them during the morph segment), fading out
+        // over progress 0.9..1 to hand the body back to its real texture.
         float fadeAlpha = progress >= FADE_START
                 ? Math.max(0f, 1f - (progress - FADE_START) / (1f - FADE_START)) : 1f;
         if (fadeAlpha <= 0.01f) return;
@@ -87,9 +89,9 @@ public class EditedModelLayer extends RenderLayer<ChangedEntity, net.ltxprogramm
             VertexConsumer cover = buffer.getBuffer(fadeAlpha >= 0.999f
                     ? RenderType.entitySolid(tintTex)
                     : RenderType.entityTranslucent(tintTex));
-            // spawnOnly=false: draw ALL blocks (extracted too); progress < 1 keeps the
-            // emit inflate active so the cover sits above its own textured base.
-            edited.render(this.getParentModel(), poseStack, cover, packedLight, OverlayTexture.NO_OVERLAY, progress, false);
+            // extractedOnly=true + progress<1 keeps the emit inflate active so the
+            // shell sits above the textured base without z-fighting.
+            edited.render(this.getParentModel(), poseStack, cover, packedLight, OverlayTexture.NO_OVERLAY, progress, false, true);
         } finally {
             EditedModel.TINT.set(null);
         }

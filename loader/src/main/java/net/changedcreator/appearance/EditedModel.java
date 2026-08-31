@@ -528,7 +528,7 @@ public final class EditedModel {
                 cy = origin[1] + (cy - origin[1]) * t;
                 cz = origin[2] + (cz - origin[2]) * t;
                 pose.translate(cx / 16f, cy / 16f, cz / 16f);
-                float s = (s0 + (1f - s0) * t) * 1.02f; // 1.02x from center: fully cover the morphing body (no z-fight)
+                float s = (s0 + (1f - s0) * t) * 1.04f; // inflated from center: fully cover the morphing body (no z-fight)
                 pose.scale(s, s, s);
             } else {
                 pose.translate(cx / 16f, cy / 16f, cz / 16f);
@@ -544,7 +544,7 @@ public final class EditedModel {
                         (min[0] - cx) / 16f, (min[1] - cy) / 16f, (min[2] - cz) / 16f,
                         (max[0] - cx) / 16f, (max[1] - cy) / 16f, (max[2] - cz) / 16f);
             } else {
-                for (Face f : faces) f.emit(m, nrm, vc, light, overlay, cx, cy, cz);
+                for (Face f : faces) f.emit(m, nrm, vc, light, overlay, cx, cy, cz, isCustom);
             }
             pose.popPose();
         }
@@ -587,9 +587,11 @@ public final class EditedModel {
             return new Face(p, uv, n);
         }
 
-        void emit(Matrix4f m, Matrix3f nrm, VertexConsumer vc, int light, int overlay, float cx, float cy, float cz) {
+        void emit(Matrix4f m, Matrix3f nrm, VertexConsumer vc, int light, int overlay, float cx, float cy, float cz, boolean editorMade) {
             // Recompute the normal from the quad winding so mirror-flipped faces
             // shade toward the real light (never trust a possibly-mirrored normal).
+            // Editor-built faces wind OPPOSITE to extracted ones, so only they are
+            // negated (extracted faces shade correctly as-is).
             float ax = (p[1][0] - p[0][0]), ay = (p[1][1] - p[0][1]), az = (p[1][2] - p[0][2]);
             float bx = (p[2][0] - p[0][0]), by = (p[2][1] - p[0][1]), bz = (p[2][2] - p[0][2]);
             float nx = ay * bz - az * by;
@@ -599,9 +601,7 @@ public final class EditedModel {
             nx /= len < 1e-6 ? 1 : len;
             ny /= len < 1e-6 ? 1 : len;
             nz /= len < 1e-6 ? 1 : len;
-            // NEGATED: the editor's face winding convention is opposite to MC's front
-            // face, so the raw cross product pointed inward (lighting looked inverted).
-            Vector3f nn = new Vector3f(-nx, -ny, -nz);
+            Vector3f nn = editorMade ? new Vector3f(-nx, -ny, -nz) : new Vector3f(nx, ny, nz);
             nrm.transform(nn);
             // Entity RenderType draws QUADS (4 verts), not triangles.
             float[] tint = TINT.get();

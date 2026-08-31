@@ -1143,6 +1143,11 @@ function toggleGizmoMode(mode) {
 
 /** Rebuild preview from current model JSON without reloading the texture canvas. */
 function rebuildModel() {
-  if (typeof renderModelFromState === "function") renderModelFromState();
-  else if (typeof renderModel === "function") renderModel(state.modelJson, false);
+  try {
+    if (typeof renderModelFromState === "function") renderModelFromState();
+    else if (typeof renderModel === "function") renderModel(state.modelJson, false);
+  } catch (err) {
+    console.error(err);
+    if (typeof setStatus === "function") setStatus("模型重建失败：" + (err && err.message ? err.message : err), false);
+  }
 }

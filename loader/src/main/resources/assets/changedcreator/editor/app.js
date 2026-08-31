@@ -743,7 +743,10 @@ function buildCubeGeometry(c, texture) {
         positions.push(v.p[0] / 16, -v.p[1] / 16, v.p[2] / 16);
         uvs.push(v.uv[0], v.uv[1]);
         const n = face.normal || [0, 1, 0];
-        normals.push(n[0], -n[1], n[2]);
+        // Editor-created (uvLayout) faces wind opposite to extracted ones — their
+        // normals point inward, which showed as inverted lighting in the preview.
+        const flip = c.uvLayout ? -1 : 1;
+        normals.push(n[0] * flip, -n[1] * flip, n[2] * flip);
         indices.push(vi++);
       }
     }
@@ -1521,6 +1524,9 @@ function selectedPivotJson() {
   if (!cubes.length) return [0, 0, 0];
   if (state.pivotMode !== "center" && state.selectedCubeId) {
     const found = findCube(state.selectedCubeId);
+    // The rotate math compares against root-frame centers — convert, or a single
+    // selected block would rotate about a bogus pivot in its part-local frame.
+    if (found.cube && found.part && typeof localToRoot === "function") return localToRoot(found.part, cubeCenter(found.cube));
     if (found.cube) return cubeCenter(found.cube);
   }
   let sx = 0, sy = 0, sz = 0;
@@ -1644,7 +1650,8 @@ function snapVal(v, step) {
 /** Mouse delta projected onto a gizmo axis (world units). Sign flipped to match on-screen drag. */
 function dragAlongAxis(e, axis) {
   if (!gizmoGroup || !camera || !renderer) return 0;
-  const dir = new THREE.Vector3(axis === "x" ? 1 : 0, axis === "y" ? 1 : 0, axis === "z" ? 1 : 0);
+  // JSON axis in preview-local space: the view flips Y, so JSON +Y is local -Y.
+  const dir = new THREE.Vector3(axis === "x" ? 1 : 0, axis === "y" ? -1 : 0, axis === "z" ? 1 : 0);
   dir.applyQuaternion(gizmoGroup.quaternion);
   const origin = gizmoGroup.position.clone();
   const p0 = origin.clone().project(camera);
@@ -1656,10 +1663,8 @@ function dragAlongAxis(e, axis) {
   const my = -(e.clientY - gizmoDrag.startY);
   const len2 = ax * ax + ay * ay;
   if (len2 < 1e-6) return 0;
-  let s = (mx * ax + my * ay) / len2;
-  // JSON Y is inverted in the Three preview (position.y = -cy/16); X/Z are not.
-  if (axis === "y") s = -s;
-  return s;
+  // Positive = mouse moved along the JSON axis's on-screen direction.
+  return (mx * ax + my * ay) / len2;
 }
 
 function onGizmoDrag(e) {
@@ -1674,8 +1679,21 @@ function onGizmoDrag(e) {
   if (gizmoDrag.mode === "move") {
     const step = (typeof num === "function" ? num("moveStep") : 1) || 1;
     const deltaPx = snapVal(world * 16, step);
-    const delta = [0, 0, 0];
+    // The gizmo axis follows the block's rotation; translateCube is part-local.
+    // Map the dragged axis into part-local JSON coords so the block follows the
+    // arrow even when it (or its part chain) is rotated.
+    let delta = [0, 0, 0];
     delta[i] = deltaPx;
+    const pm = meshByCubeId(gizmoDrag.cubeId);
+    if (pm && pm.parent) {
+      const qp = new THREE.Quaternion();
+      pm.parent.getWorldQuaternion(qp);
+      const qg = new THREE.Quaternion();
+      (pm.parent.parent || pm.parent).getWorldQuaternion(qg);
+      qp.premultiply(qg.invert()); // pivot rotation relative to its part group
+      const al = new THREE.Vector3(i === 0 ? 1 : 0, i === 1 ? -1 : 0, i === 2 ? 1 : 0).applyQuaternion(qp);
+      delta = [al.x * deltaPx, -al.y * deltaPx, al.z * deltaPx];
+    }
     const target = [
       gizmoDrag.startCenter[0] + delta[0],
       gizmoDrag.startCenter[1] + delta[1],

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>胶兽编辑器 - Changed Creator</title>
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<header>
+  <h1>胶兽编辑器 <small>Changed Creator</small></h1>
+  <div class="toolbar">
+    <button id="btnNew" class="primary">＋ 新建形态</button>
+    <span id="statusText" class="status"></span>
+  </div>
+</header>
+
+<main>
+  <aside id="sidebar">
+    <h2>自定义形态</h2>
+    <ul id="formList"></ul>
+    <h2>原版示例</h2>
+    <select id="exampleSelect"></select>
+    <p class="hint">选择原版示例可参考其属性与模型。</p>
+    <h2>导入导出</h2>
+    <input type="file" id="fileInput" accept=".json" style="display:none">
+    <button id="btnImport">读取导出文件…</button>
+    <button id="btnExport">导出文件</button>
+    <p class="hint">导出文件可放到游戏内 <code>config/changedcreator/imports/</code> 由游戏内界面导入热生效。</p>
+  </aside>
+
+  <section id="editor">
+    <div class="editor-row">
+      <div id="previewPane">
+        <div id="previewHint">没有可用模型：请先在游戏中变身为该形态（进入世界后编辑器可提取真实模型结构），或选择原版示例。</div>
+        <div id="gizmoBar">
+          <button type="button" id="gizmoMove" class="active" title="G：沿轴拖动移动（再按关闭）">移动</button>
+          <button type="button" id="gizmoRotate" title="R：沿环拖动旋转（再按关闭）">旋转</button>
+          <button type="button" id="gizmoScale" title="S：沿轴拖动缩放（再按关闭）">缩放</button>
+          <label class="inline">中心
+            <select id="pivotMode">
+              <option value="last">最后选中</option>
+              <option value="center">几何中心</option>
+            </select>
+          </label>
+          <span class="hint">点轴=步进一格（Alt 反向）；Ctrl/Shift 多选；Ctrl+Z 撤回</span>
+        </div>
+        <div id="three"></div>
+        <div id="previewMeta"></div>
+      </div>
+      <div class="splitter" id="splitPreview" title="拖动改变预览宽度"></div>
+      <fieldset id="cubePane">
+        <legend>方块编辑</legend>
+        <div class="cube-toolbar">
+          <button type="button" id="btnAddCube" title="在当前部件下新建方块（默认左右对称）">＋ 方块</button>
+          <button type="button" id="btnAddPlane" title="新建厚度为 0 的贴图面（正反两面）">＋ 面</button>
+          <button type="button" id="btnDelCube" title="删除选中方块（含其镜像）并释放贴图">删除</button>
+        </div>
+        <p class="hint" id="cubeHint">点预览选中方块。G/R/S 切换拖拽轴。</p>
+        <label>绑定部件（动画父级）
+          <select id="cubeBind"></select>
+        </label>
+        <div class="cube-xyz">
+          <span>移动 间隔 <input type="number" id="moveStep" value="1" min="0.01" step="0.25" title="单位：模型像素，可小于 1"></span>
+        </div>
+        <div class="cube-xyz" id="cubeMoveBtns">
+          <span>X
+            <button type="button" data-move="-1,0,0">−</button>
+            <input type="number" id="cubeX" step="0.25">
+            <button type="button" data-move="1,0,0">＋</button>
+          </span>
+          <span>Y
+            <button type="button" data-move="0,-1,0">−</button>
+            <input type="number" id="cubeY" step="0.25">
+            <button type="button" data-move="0,1,0">＋</button>
+          </span>
+          <span>Z
+            <button type="button" data-move="0,0,-1">−</button>
+            <input type="number" id="cubeZ" step="0.25">
+            <button type="button" data-move="0,0,1">＋</button>
+          </span>
+        </div>
+        <div class="cube-xyz">
+          <span>旋转 间隔(°) <input type="number" id="rotStep" value="15" min="0.1" step="1"></span>
+        </div>
+        <div class="cube-xyz" id="cubeRotBtns">
+          <span>RX
+            <button type="button" data-rot="-1,0,0">−</button>
+            <input type="number" id="cubeRX" step="1">
+            <button type="button" data-rot="1,0,0">＋</button>
+          </span>
+          <span>RY
+            <button type="button" data-rot="0,-1,0">−</button>
+            <input type="number" id="cubeRY" step="1">
+            <button type="button" data-rot="0,1,0">＋</button>
+          </span>
+          <span>RZ
+            <button type="button" data-rot="0,0,-1">−</button>
+            <input type="number" id="cubeRZ" step="1">
+            <button type="button" data-rot="0,0,1">＋</button>
+          </span>
+        </div>
+        <label>大小（整数像素；面的厚度轴保持 0；同步贴图占用）</label>
+        <div class="cube-size-row"><span>SX</span><input type="range" id="cubeSXs" min="0" max="32" step="1" value="8"><input type="number" id="cubeSX" min="0" step="1"></div>
+        <div class="cube-size-row"><span>SY</span><input type="range" id="cubeSYs" min="0" max="32" step="1" value="8"><input type="number" id="cubeSY" min="0" step="1"></div>
+        <div class="cube-size-row"><span>SZ</span><input type="range" id="cubeSZs" min="0" max="32" step="1" value="8"><input type="number" id="cubeSZ" min="0" step="1"></div>
+        <label>对称（默认左右 / X；原点=模型根坐标 0,0,0）</label>
+        <div class="cube-xyz">
+          <label class="inline"><input type="checkbox" id="symX" checked> X 左右</label>
+          <label class="inline"><input type="checkbox" id="symY"> Y 上下</label>
+          <label class="inline"><input type="checkbox" id="symZ"> Z 前后</label>
+        </div>
+        <label>对称原点
+          <select id="symOrigin"></select>
+        </label>
+        <div class="cube-toolbar">
+          <button type="button" id="btnApplySym" title="按当前轴向强制复制镜像方块">应用对称</button>
+          <button type="button" id="btnUnlinkSym" title="解除对称，镜像块变为独立方块">解除对称</button>
+        </div>
+      </fieldset>
+      <div class="splitter" id="splitCube" title="拖动改变面板/贴图宽度"></div>
+      <div id="texPane">
+        <fieldset>
+          <legend>贴图编辑（画笔 / 填充 / 取色）</legend>
+          <div class="tex-toolbar">
+            <button type="button" id="toolBrush" class="active">画笔</button>
+            <button type="button" id="toolFill">填充桶</button>
+            <button type="button" id="toolPick">取色器</button>
+            <button type="button" id="btnEmissive">发光层</button>
+            <label class="brush">笔刷 <input type="range" id="brushSize" min="1" max="24" value="4"></label>
+            <button type="button" id="btnUndo" title="Ctrl+Z">撤销</button>
+            <button type="button" id="btnRedo" title="Ctrl+Y">重做</button>
+            <button type="button" id="btnTexExport">导出贴图</button>
+            <button type="button" id="btnTexUpload">导入贴图…</button>
+            <input type="file" id="texInput" accept="image/png" style="display:none">
+          </div>
+          <div class="tex-colorbar">
+            <canvas id="colorWheel" width="96" height="96" title="色轮"></canvas>
+            <label>R <input type="range" id="cR" min="0" max="255" value="255"></label>
+            <label>G <input type="range" id="cG" min="0" max="255" value="128"></label>
+            <label>B <input type="range" id="cB" min="0" max="255" value="0"></label>
+            <label>A <input type="range" id="cA" min="0" max="255" value="255"></label>
+            <input type="text" id="cHex" value="#ff8000" title="HEX 颜色">
+            <span id="colorPrev"></span>
+          </div>
+          <div id="texCanvasWrap">
+            <div id="texInner">
+              <canvas id="texCanvas" width="96" height="96"></canvas>
+              <canvas id="texOverlay" width="96" height="96"></canvas>
+              <div id="selBox"><svg id="selSvg"></svg></div>
+            </div>
+          </div>
+          <p class="hint">
+            贴图编辑：直接在下方画布画，模型上引用该像素的面会同步变色。<br>
+            模型编辑：点选方块，中间面板或预览拖拽轴（G 移动 / R 旋转 / S 缩放）；<b>E</b> 进入贴图编辑；
+            箭头键移动视角，<b>U</b> 还原。Ctrl+Z 撤回模型或贴图。
+          </p>
+        </fieldset>
+      </div>
+    </div>
+    <div class="editor-row2">
+      <form id="editForm" autocomplete="off">
+        <fieldset class="hide-in-edit">
+          <legend>基础</legend>
+          <label>id <input id="f_id" placeholder="my_wolf" required></label>
+          <label>base_entity（从列表选已注册胶兽实体）
+            <input id="f_base" list="entityList" placeholder="changed:dark_latex_wolf_male" required>
+            <datalist id="entityList"></datalist>
+          </label>
+          <label>transfur_mode
+            <select id="f_mode">
+              <option value="replication">replication（复制）</option>
+              <option value="absorption">absorption（吸收）</option>
+              <option value="none">none</option>
+            </select>
+          </label>
+        </fieldset>
+        <fieldset class="hide-in-edit">
+          <legend>能力 abilities（每行一个）</legend>
+          <textarea id="f_abilities" rows="3" placeholder="changed:grab_entity&#10;changed:access_chest"></textarea>
+          <p class="hint" id="abilityHint">可用能力加载中…（填错会导致变形失败，请从列表选）</p>
+        </fieldset>
+        <fieldset class="hide-in-edit">
+          <legend>属性 properties（JSON）</legend>
+          <textarea id="f_properties" rows="7" placeholder='{"gills": true, "night_vision": true}'></textarea>
+          <p class="hint">可选字段：gills / canClimb / nightVision / reducedFall / glide / doubleJump / extraJumps / quadrupedal / noLegs / disableItems / holdItemsInMouth / cameraZOffset / sound</p>
+        </fieldset>
+        <fieldset>
+          <legend>外观 appearance</legend>
+          <label>tint（主体色，影响本体与背包/技能轮盘） <input type="color" id="f_tint" value="#ffffff"></label>
+          <label>texture（贴图 id，留空用基实体默认贴图） <input id="f_texture" placeholder="changedcreator:textures/entity/red_wolf.png"></label>
+          <div class="texrow">
+            <img id="texPreview" alt="贴图预览" title="当前形态贴图">
+          </div>
+        </fieldset>
+        <div class="form-actions">
+          <button type="submit" class="primary" id="btnSave" title="写 forms/appearance/贴图到配置文件；tint 与贴图立即生效">保存</button>
+          <button type="button" id="btnHotReg" title="运行时注册/更新形态，免重启（已连接玩家需重进世界可见）">热注册（免重启）</button>
+          <span id="saveResult"></span>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<script src="/web/vendor/three.min.js"></script>
+<script src="/web/vendor/OrbitControls.js"></script>
+<script src="/web/model_edit.js"></script>
+<script src="/web/app.js"></script>
+</body>
+</html>

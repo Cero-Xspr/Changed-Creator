@@ -1,0 +1,4 @@
+loader/build/
+loader/.gradle/
+loader/run/
+*.zip

@@ -1,0 +1,13 @@
+{
+  "id": "red_wolf",
+  "base_entity": "changed:dark_latex_wolf_male",
+  "transfur_mode": "replication",
+  "properties": {
+    "can_climb": true,
+    "night_vision": true,
+    "double_jump": true
+  },
+  "abilities": [
+    "changed:toggle_night_vision"
+  ]
+}

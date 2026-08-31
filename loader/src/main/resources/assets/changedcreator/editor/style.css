@@ -1,0 +1,105 @@
+/* 胶兽编辑器 - Changed Creator */
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #1b1f24; color: #e6e6e6; }
+header { padding: 10px 16px; background: #262b33; border-bottom: 1px solid #3a4150; display: flex; align-items: center; justify-content: space-between; }
+h1 { font-size: 18px; margin: 0; }
+h1 small { color: #8aa; font-weight: normal; }
+h2 { font-size: 13px; color: #9fb3c8; margin: 14px 0 6px; }
+.toolbar { display: flex; align-items: center; gap: 12px; }
+.status { color: #9ecb5a; font-size: 12px; }
+
+main { display: flex; min-height: calc(100vh - 52px); }
+#sidebar { width: 240px; padding: 8px 12px; background: #20252c; border-right: 1px solid #3a4150; flex-shrink: 0; overflow-y: auto; }
+#formList { list-style: none; margin: 0; padding: 0; }
+#formList li { padding: 5px 8px; cursor: pointer; border-radius: 4px; font-size: 13px; }
+#formList li:hover { background: #2c3440; }
+#formList li.active { background: #37506e; }
+#exampleSelect { width: 100%; background: #2c3440; color: #e6e6e6; border: 1px solid #3a4150; padding: 4px; }
+.hint { font-size: 11px; color: #7d8896; margin: 6px 0; }
+code { background: #2c3440; padding: 1px 4px; border-radius: 3px; }
+
+#editor { flex: 1; padding: 12px 16px; }
+.editor-row { display: flex; gap: 0; align-items: stretch; min-height: calc(100vh - 80px); }
+#previewPane { width: 420px; flex-shrink: 0; min-width: 220px; overflow: hidden; }
+.splitter {
+  width: 6px; flex-shrink: 0; cursor: col-resize; background: #2c3440;
+  border-left: 1px solid #3a4150; border-right: 1px solid #3a4150;
+}
+.splitter:hover, .splitter.dragging { background: #4a6a92; }
+#gizmoBar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+#gizmoBar button.active { background: #3d7a46; border-color: #55a060; }
+#texPane { flex: 1; min-width: 180px; overflow: auto; }
+.editor-row2 { margin-top: 12px; }
+body.edit-mode .hide-in-edit { display: none; }
+form { min-width: 0; }
+#three { width: 100%; height: 460px; background: radial-gradient(circle at 50% 40%, #2a3140, #14171c); border: 1px solid #3a4150; border-radius: 6px; position: relative; overflow: hidden; }
+#previewHint { display: none; position: absolute; z-index: 5; margin: 8px 12px; font-size: 12px; color: #e8c46a; background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 4px; max-width: 420px; }
+#previewMeta { font-size: 12px; color: #8aa; margin-top: 4px; }
+#cubePane {
+  width: 260px; flex-shrink: 0; margin: 0; min-width: 180px;
+  max-height: none; overflow-y: auto;
+}
+#cubePane .cube-toolbar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+#cubePane .cube-xyz { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; font-size: 12px; align-items: center; }
+#cubePane .cube-xyz span { display: inline-flex; align-items: center; gap: 3px; }
+#cubePane .cube-xyz input[type=number] { width: 64px; margin: 0; padding: 3px 5px; }
+#cubePane .cube-xyz button { padding: 2px 8px; margin: 0; }
+#cubePane .cube-size-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 12px; }
+#cubePane .cube-size-row span { width: 22px; color: #9fb3c8; }
+#cubePane .cube-size-row input[type=range] { flex: 1; margin: 0; }
+#cubePane .cube-size-row input[type=number] { width: 64px; margin: 0; }
+#cubePane label.inline { display: inline-flex; align-items: center; gap: 4px; margin: 0 8px 0 0; }
+#cubePane select { margin-top: 3px; }
+#previewMeta canvas { display: block; margin-top: 4px; max-width: 460px; }
+
+form { flex: 1; min-width: 0; }
+fieldset { border: 1px solid #3a4150; border-radius: 6px; margin-bottom: 10px; padding: 10px 12px; }
+legend { color: #9fb3c8; font-size: 12px; padding: 0 6px; }
+label { display: block; margin-bottom: 8px; font-size: 13px; color: #b8c4d0; }
+input[type=text], input:not([type=color]):not([type=file]), select, textarea {
+  width: 100%; background: #2c3440; color: #e6e6e6; border: 1px solid #3a4150;
+  border-radius: 4px; padding: 5px 7px; margin-top: 3px; font-size: 13px;
+}
+input[type=color] { width: 48px; height: 28px; padding: 0; border: 1px solid #3a4150; background: #2c3440; vertical-align: middle; }
+textarea { font-family: Consolas, monospace; }
+button {
+  background: #37506e; color: #e6e6e6; border: 1px solid #4a6a92; border-radius: 5px;
+  padding: 6px 12px; cursor: pointer; font-size: 13px; margin: 2px 6px 2px 0;
+}
+button:hover { background: #45658c; }
+button.primary { background: #3d7a46; border-color: #55a060; }
+button.primary:hover { background: #4a9156; }
+.texrow { display: flex; align-items: center; gap: 10px; }
+#texPreview { max-width: 96px; max-height: 96px; border: 1px solid #3a4150; image-rendering: pixelated; }
+.form-actions { margin-top: 4px; }
+#saveResult { font-size: 12px; color: #9ecb5a; margin-left: 8px; }
+
+/* ---- texture editor ---- */
+.tex-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.tex-toolbar button.active { background: #3d7a46; border-color: #55a060; }
+.tex-toolbar .brush { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.tex-colorbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; font-size: 12px; }
+.tex-colorbar label { display: inline-flex; align-items: center; gap: 2px; margin: 0; }
+.tex-colorbar input[type=range] { width: 56px; margin: 0; }
+.tex-colorbar input[type=text] { width: 72px; margin: 0; }
+#colorPrev { display: inline-block; width: 22px; height: 22px; border: 1px solid #4a6a92; border-radius: 3px; vertical-align: middle; }
+#texCanvasWrap { position: relative; width: 288px; height: 288px; overflow: auto; }
+#texInner { position: relative; }
+#texCanvas {
+  display: block; width: 288px; height: 288px; image-rendering: pixelated;
+  border: 1px solid #3a4150; border-radius: 4px; background: repeating-conic-gradient(#2c3440 0% 25%, #222a33 0% 50%) 0 0 / 16px 16px;
+  cursor: crosshair; touch-action: none;
+}
+#texOverlay {
+  position: absolute; left: 0; top: 0; width: 288px; height: 288px;
+  image-rendering: pixelated; pointer-events: none; border-radius: 4px;
+}
+#selBox {
+  position: absolute; display: none; left: 0; top: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 5;
+}
+#selSvg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+#selSvg polygon { fill: rgba(255,204,0,0.12); stroke: #ffcc00; stroke-width: 1.5; }
+
+
+#colorWheel { width: 96px; height: 96px; border-radius: 50%; cursor: crosshair; border: 1px solid #3a4150; }

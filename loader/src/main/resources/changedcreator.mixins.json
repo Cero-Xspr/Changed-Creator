@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.changedcreator.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "changedcreator.mixins.refmap.json",
+  "mixins": [
+    "TransfurVariantInstanceMixin"
+  ],
+  "client": [
+    "client.LivingEntityRendererMixin",
+    "client.FormRenderHandlerMixin",
+    "client.LatexParticlesLayerMixin",
+    "client.ModelPartCompileMixin",
+    "client.LivingEntityRendererSkipMixin",
+    "client.TransfurAnimatorMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

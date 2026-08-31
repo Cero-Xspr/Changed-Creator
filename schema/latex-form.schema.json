@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/changedcreator/latex-form.schema.json",
+  "title": "Changed Creator latex form definition",
+  "description": "Defines a custom transfur variant (latex form) for Changed: Minecraft Mod v0.15.7. Drop this JSON into <minecraft>/config/changedcreator/forms/ and restart the game.",
+  "type": "object",
+  "required": ["id", "base_entity"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+      "description": "Variant id. The full id becomes changedcreator:<id>, usable with /tf @s changedcreator:<id>"
+    },
+    "base_entity": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$",
+      "description": "ResourceLocation of an existing Changed latex entity to reuse (model/texture/renderer), e.g. changed:dark_latex_wolf_male"
+    },
+    "transfur_mode": {
+      "type": "string",
+      "enum": ["replication", "absorption", "none"],
+      "description": "How this form transfurs other entities"
+    },
+    "abilities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ability ids to grant, e.g. changed:toggle_night_vision"
+    },
+    "properties": {
+      "type": "object",
+      "description": "Gameplay properties of the variant (Changed v0.15.7 API). Note: faction/stepSize/jumpStrength are entity-level and inherited from base_entity. Keys use snake_case; camelCase variants are also accepted.",
+      "properties": {
+        "gills": { "type": "boolean", "description": "Breathe underwater and on land" },
+        "can_climb": { "type": "boolean", "description": "Climb walls, ignore cobwebs" },
+        "night_vision": { "type": "boolean", "description": "See in the dark" },
+        "reduced_fall": { "type": "boolean", "description": "Take less fall damage" },
+        "glide": { "type": "boolean", "description": "Has wings: nerfed creative fly + elytra-style fall flying" },
+        "double_jump": { "type": "boolean", "description": "One extra mid-air jump" },
+        "extra_jumps": { "type": "integer", "minimum": 0, "description": "Number of mid-air jumps" },
+        "quadrupedal": { "type": "boolean", "description": "Four-legged armor handling" },
+        "no_legs": { "type": "boolean", "description": "No legs (e.g. tail-based forms)" },
+        "disable_items": { "type": "boolean", "description": "Cannot use items, break blocks, or attack" },
+        "hold_items_in_mouth": { "type": "boolean", "description": "Can hold one item out, cannot break blocks" },
+        "camera_z_offset": { "type": "number", "description": "Camera offset from center in blocks" },
+        "sound": { "type": "string", "description": "Transfur sound id, e.g. changed:poison" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

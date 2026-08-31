@@ -1,0 +1,22 @@
+前置依赖说明（必读）
+====================
+
+本模组需要以下前置才能运行：
+
+1. Minecraft 1.20.1 + Forge 47.4.x（官方启动器 / HMCL / PCL 均可）
+2. Changed: Minecraft Mod v0.15.7（包含 mixinextras，无需额外安装）
+
+下载 Changed v0.15.7：
+  GitHub: https://github.com/LtxProgrammer/Changed-Minecraft-Mod/releases
+  文件:   Changed-m1.20.1-v0.15.7-all.jar
+
+安装步骤：
+  1. 把本文件夹中的 changedcreator-1.0.0.jar 放入 mods/
+  2. 把下载的 Changed-m1.20.1-v0.15.7-all.jar 也放入 mods/
+  3. （可选）把 config/ 目录复制到游戏目录（含示例形态 red_wolf）
+  4. 启动游戏 → 主菜单左下角方块按钮打开编辑器
+
+注意：
+  - 首次启动会自动创建 config/changedcreator/forms/（空目录）
+  - 建议在 config/changed-common.toml 中设置 downloadPatreonContent = false
+  - 详细说明见 README.md（英文）/ README-中文.md（中文）

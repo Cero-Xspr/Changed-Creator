@@ -72,6 +72,7 @@ See [`docs/使用说明.md`](docs/使用说明.md) (Chinese) for the full field 
 - **Forms (variants)**: registered on the server → synced to clients on join; both server and clients need this mod + Changed
 - **Hot-register**: run it on the server AND on each client; already-connected players must **rejoin** to see new forms
 - **Appearance (tint/texture/glow)**: client-side; distribute the same `config/changedcreator/` if you want identical looks
+- **Not verified!**
 
 ## FAQ
 

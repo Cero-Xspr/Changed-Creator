@@ -7,8 +7,31 @@ const MODEL_UNDO_LIMIT = 40;
 let modelUndo = [];
 let modelRedo = [];
 
-function nextCubeId() { return "c_" + (_cubeSeq++); }
-function nextGroupId() { return "g_" + (_cubeSeq++); }
+// IDs must be unique across the whole loaded model: a naive "c_" + seq++ restarts
+// at 1 on every page load and collides with ids already saved in the file — every
+// id-based lookup (findCube/meshByCubeId/UV clear) then hits the WRONG cube, which
+// showed as blocks vanishing and vanilla texture being erased after any edit.
+function usedIds() {
+  const used = new Set();
+  if (typeof state !== "undefined" && state.modelJson && state.modelJson.root) {
+    walkParts(state.modelJson.root, (p) => {
+      (p.cubes || []).forEach((c) => { if (c.id) used.add(c.id); });
+    });
+  }
+  return used;
+}
+
+function nextCubeId() {
+  const used = usedIds();
+  while (used.has("c_" + _cubeSeq)) _cubeSeq++;
+  return "c_" + (_cubeSeq++);
+}
+
+function nextGroupId() {
+  const used = usedIds();
+  while (used.has("g_" + _cubeSeq)) _cubeSeq++;
+  return "g_" + (_cubeSeq++);
+}
 
 function cubeCenter(c) {
   return [
@@ -79,9 +102,12 @@ function dedupeModelTree(model) {
 
 function ensureCubeIds(root) {
   if (!root) return;
+  const seen = new Set();
   walkParts(root, (part) => {
     (part.cubes || []).forEach((c) => {
+      if (c.id && seen.has(c.id)) c.id = null; // duplicate id in file: reassign below
       if (!c.id) c.id = nextCubeId();
+      seen.add(c.id);
       if (!c.kind) {
         const s = cubeSize(c);
         c.kind = (s[0] < 1e-4 || s[1] < 1e-4 || s[2] < 1e-4) ? "plane" : "box";

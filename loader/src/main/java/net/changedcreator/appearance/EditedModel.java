@@ -99,36 +99,22 @@ public final class EditedModel {
     }
 
     /**
-     * Resolves each custom cube's {@code animFrom} into a spawn point expressed in the
-     * cube's OWN node-local space, using the STATIC part transforms (during the morph
-     * every node pose is frozen, so static relative transforms are exact within a limb
-     * and a good approximation across limbs). The starting scale mirrors Changed's own
-     * cube morphing: the block begins at roughly the origin block's size.
+     * Indexes cube ids (for animFrom lookups) and resolves each custom cube's starting
+     * scale: the block begins at roughly the origin block's size, like Changed's own
+     * cube morphing. The spawn POSITION is resolved per-frame in {@code renderLimbSubtree}
+     * through the real animated matrices (static pre-resolution disagreed with the
+     * morph-time pose chain — blocks emerged on the wrong side).
      */
     private void resolveAnimOrigins() {
         if (root == null) return;
-        Map<String, Cube> byId = new java.util.HashMap<>();
-        Map<String, Node> owner = new java.util.HashMap<>();
-        indexCubes(root, byId, owner);
-        Map<Node, Matrix4f> world = new java.util.IdentityHashMap<>();
-        computeStaticWorld(root, new Matrix4f(), world);
+        byId = new java.util.HashMap<>();
+        ownerById = new java.util.HashMap<>();
+        indexCubes(root, byId, ownerById);
         forEachCube(root, c -> {
             if (c.animFrom == null) return;
             try {
                 Cube from = byId.get(c.animFrom);
-                Node fromNode = owner.get(c.animFrom);
-                Node myNode = owner.get(c.id);
-                if (from == null || fromNode == null || myNode == null || c == from) return;
-                Matrix4f wFrom = world.get(fromNode);
-                Matrix4f wMy = world.get(myNode);
-                if (wFrom == null || wMy == null) return;
-                Vector3f p = new Vector3f(
-                        (from.min[0] + from.max[0]) / 2f / 16f,
-                        (from.min[1] + from.max[1]) / 2f / 16f,
-                        (from.min[2] + from.max[2]) / 2f / 16f);
-                wFrom.transformPosition(p);
-                Vector3f local = new Matrix4f(wMy).invert().transformPosition(p);
-                c.resolvedOrigin = new float[]{local.x * 16f, local.y * 16f, local.z * 16f};
+                if (from == null || c == from) return;
                 double vFrom = (from.max[0] - from.min[0]) * (from.max[1] - from.min[1]) * (from.max[2] - from.min[2]);
                 double vMy = (c.max[0] - c.min[0]) * (c.max[1] - c.min[1]) * (c.max[2] - c.min[2]);
                 if (vMy > 1e-6) {
@@ -136,10 +122,12 @@ public final class EditedModel {
                     c.resolvedStartScale = Math.max(0.05f, Math.min(8f, ratio));
                 }
             } catch (Exception ignored) {
-                c.resolvedOrigin = null;
             }
         });
     }
+
+    private Map<String, Cube> byId;
+    private Map<String, Node> ownerById;
 
     private static void indexCubes(Node node, Map<String, Cube> byId, Map<String, Node> owner) {
         for (Cube c : node.cubes) {
@@ -149,16 +137,6 @@ public final class EditedModel {
             }
         }
         for (Node ch : node.children) indexCubes(ch, byId, owner);
-    }
-
-    private static void computeStaticWorld(Node node, Matrix4f parent, Map<Node, Matrix4f> out) {
-        Matrix4f m = new Matrix4f(parent);
-        m.translate(node.pos[0] / 16f, node.pos[1] / 16f, node.pos[2] / 16f);
-        m.rotate(Axis.ZP.rotation(node.rot[2]));
-        m.rotate(Axis.YP.rotation(node.rot[1]));
-        m.rotate(Axis.XP.rotation(node.rot[0]));
-        out.put(node, m);
-        for (Node ch : node.children) computeStaticWorld(ch, m, out);
     }
 
     private static void forEachCube(Node node, java.util.function.Consumer<Cube> fn) {
@@ -185,11 +163,67 @@ public final class EditedModel {
                                      PoseStack pose, VertexConsumer vc, int light, int overlay, float progress) {
         if (root == null || limbPart == null) return false;
         Map<String, ModelPart> named = collectNamedParts(model);
-        return renderPruned(root, named, limbPart, humanoidPart, alpha, false, pose, vc, light, overlay, progress);
+        // Walk the tree with the SAME transforms the draw pass uses (transition pose on
+        // the matched limb part, live/static elsewhere) and record each animFrom origin
+        // block's center in root space, so spawn points ride the real animated joints.
+        Map<Node, Matrix4f> world = new java.util.IdentityHashMap<>();
+        collectRenderWorld(root, named, limbPart, humanoidPart, alpha, new Matrix4f(), world);
+        Map<Cube, Vector3f> originWorld = new java.util.IdentityHashMap<>();
+        if (byId != null) {
+            forEachCube(root, c -> {
+                if (c.animFrom == null) return;
+                Cube from = byId.get(c.animFrom);
+                Node fromNode = ownerById.get(c.animFrom);
+                if (from == null || fromNode == null) return;
+                Matrix4f w = world.get(fromNode);
+                if (w == null) return;
+                originWorld.put(c, w.transformPosition(new Vector3f(
+                        (from.min[0] + from.max[0]) / 2f / 16f,
+                        (from.min[1] + from.max[1]) / 2f / 16f,
+                        (from.min[2] + from.max[2]) / 2f / 16f)));
+            });
+        }
+        return renderPruned(root, named, limbPart, humanoidPart, alpha, false, originWorld, pose, vc, light, overlay, progress);
+    }
+
+    /** Mirrors the draw pass exactly: transition pose on the matched node, live/static elsewhere. */
+    private void collectRenderWorld(Node node, Map<String, ModelPart> named, ModelPart limbPart, ModelPart humanoidPart,
+                                    float alpha, Matrix4f parentWorld, Map<Node, Matrix4f> out) {
+        ModelPart live = named.get(node.name);
+        Matrix4f m = new Matrix4f(parentWorld);
+        if (live == limbPart && humanoidPart != null) {
+            m.translate(lerp(humanoidPart.x, live.x, alpha) / 16f,
+                    lerp(humanoidPart.y, live.y, alpha) / 16f,
+                    lerp(humanoidPart.z, live.z, alpha) / 16f);
+            m.rotate(Axis.ZP.rotation(lerp(humanoidPart.zRot, live.zRot, alpha)));
+            m.rotate(Axis.YP.rotation(lerp(humanoidPart.yRot, live.yRot, alpha)));
+            m.rotate(Axis.XP.rotation(lerp(humanoidPart.xRot, live.xRot, alpha)));
+            m.scale(lerp(humanoidPart.xScale, live.xScale, alpha),
+                    lerp(humanoidPart.yScale, live.yScale, alpha),
+                    lerp(humanoidPart.zScale, live.zScale, alpha));
+        } else if (live != null) {
+            m.translate(live.x / 16f, live.y / 16f, live.z / 16f);
+            m.rotate(Axis.ZP.rotation(live.zRot));
+            m.rotate(Axis.YP.rotation(live.yRot));
+            m.rotate(Axis.XP.rotation(live.xRot));
+            if (live.xScale != 1f || live.yScale != 1f || live.zScale != 1f) m.scale(live.xScale, live.yScale, live.zScale);
+        } else {
+            m.translate(node.pos[0] / 16f, node.pos[1] / 16f, node.pos[2] / 16f);
+            m.rotate(Axis.ZP.rotation(node.rot[2]));
+            m.rotate(Axis.YP.rotation(node.rot[1]));
+            m.rotate(Axis.XP.rotation(node.rot[0]));
+        }
+        out.put(node, m);
+        for (Node ch : node.children) collectRenderWorld(ch, named, limbPart, humanoidPart, alpha, m, out);
+    }
+
+    private static float lerp(float a, float b, float t) {
+        t = Math.max(0f, Math.min(1f, t));
+        return a + (b - a) * t;
     }
 
     private boolean renderPruned(Node node, Map<String, ModelPart> named, ModelPart part, ModelPart humanoidPart,
-                                 float alpha, boolean found,
+                                 float alpha, boolean found, Map<Cube, Vector3f> originWorld,
                                  PoseStack pose, VertexConsumer vc, int light, int overlay, float progress) {
         ModelPart live = named.get(node.name);
         boolean here = !found && live == part;
@@ -206,14 +240,22 @@ public final class EditedModel {
             pose.mulPose(Axis.XP.rotation(node.rot[0]));
         }
         if (here || found) {
-            float[] origin = new float[]{0, 0, 0}; // node-local origin = the animated parent joint
             for (Cube cube : node.cubes) {
                 if (!cube.isCustom) continue;
+                // animFrom spawn point: the origin block's center recorded in root space
+                // this frame, pulled back into THIS node's local space via the real
+                // (animated) matrix — so blocks fly out of the moving origin block.
+                float[] origin = new float[]{0, 0, 0};
+                Vector3f ow = originWorld != null ? originWorld.get(cube) : null;
+                if (ow != null) {
+                    Vector3f local = new Matrix4f(pose.last().pose()).invert().transformPosition(new Vector3f(ow));
+                    origin = new float[]{local.x * 16f, local.y * 16f, local.z * 16f};
+                }
                 cube.emit(pose, vc, light, overlay, progress, origin);
             }
         }
         for (Node child : node.children)
-            renderPruned(child, named, part, humanoidPart, alpha, found || here, pose, vc, light, overlay, progress);
+            renderPruned(child, named, part, humanoidPart, alpha, found || here, originWorld, pose, vc, light, overlay, progress);
         pose.popPose();
         return here || found;
     }
@@ -426,9 +468,8 @@ public final class EditedModel {
         public final String animFrom;    // id of the block this one animates OUT of, nullable
         public final boolean isCustom;   // editor-created block (has uvLayout) -> gets the spawn animation
         public final List<Face> faces;
-        // Resolved from animFrom at load: spawn point in THIS node's local space
-        // (model units) and the uniform starting scale (origin block size / own size).
-        float[] resolvedOrigin;
+        // Resolved from animFrom at load: uniform starting scale (origin block size /
+        // own size). The spawn POSITION is resolved per-frame at render time.
         float resolvedStartScale = -1f;
 
         Cube(String id, float[] min, float[] max, float[] rot, float[] animOrigin, String animFrom, boolean isCustom, List<Face> faces) {
@@ -474,7 +515,7 @@ public final class EditedModel {
             float cx = (min[0] + max[0]) / 2f;
             float cy = (min[1] + max[1]) / 2f;
             float cz = (min[2] + max[2]) / 2f;
-            float[] origin = resolvedOrigin != null ? resolvedOrigin : defaultOrigin;
+            float[] origin = defaultOrigin;
             float s0 = resolvedStartScale > 0f ? resolvedStartScale : 0.05f;
             // Spawn window 3/6..5/6 of the linearly-timed 6s progression (= seconds
             // 3..5). Blocks slide from the origin (parent joint or chosen "animFrom"
@@ -487,7 +528,7 @@ public final class EditedModel {
                 cy = origin[1] + (cy - origin[1]) * t;
                 cz = origin[2] + (cz - origin[2]) * t;
                 pose.translate(cx / 16f, cy / 16f, cz / 16f);
-                float s = s0 + (1f - s0) * t;
+                float s = (s0 + (1f - s0) * t) * 1.02f; // 1.02x from center: fully cover the morphing body (no z-fight)
                 pose.scale(s, s, s);
             } else {
                 pose.translate(cx / 16f, cy / 16f, cz / 16f);
@@ -558,19 +599,22 @@ public final class EditedModel {
             nx /= len < 1e-6 ? 1 : len;
             ny /= len < 1e-6 ? 1 : len;
             nz /= len < 1e-6 ? 1 : len;
-            Vector3f nn = new Vector3f(nx, ny, nz);
+            // NEGATED: the editor's face winding convention is opposite to MC's front
+            // face, so the raw cross product pointed inward (lighting looked inverted).
+            Vector3f nn = new Vector3f(-nx, -ny, -nz);
             nrm.transform(nn);
             // Entity RenderType draws QUADS (4 verts), not triangles.
             float[] tint = TINT.get();
             int cr = tint != null ? (int) tint[0] : 255;
             int cg = tint != null ? (int) tint[1] : 255;
             int cb = tint != null ? (int) tint[2] : 255;
+            int ca = tint != null && tint.length > 3 ? (int) tint[3] : 255;
             for (int i = 0; i < 4; i++) {
                 float x = (p[i][0] - cx) / 16f;
                 float y = (p[i][1] - cy) / 16f;
                 float z = (p[i][2] - cz) / 16f;
                 vc.vertex(m, x, y, z)
-                        .color(cr, cg, cb, 255)
+                        .color(cr, cg, cb, ca)
                         .uv(uv[i][0], uv[i][1])
                         .overlayCoords(overlay)
                         .uv2(light)
@@ -600,6 +644,7 @@ public final class EditedModel {
         int cr = tint != null ? (int) tint[0] : 255;
         int cg = tint != null ? (int) tint[1] : 255;
         int cb = tint != null ? (int) tint[2] : 255;
+        int ca = tint != null && tint.length > 3 ? (int) tint[3] : 255;
         float[] xs = {x0, x1, x2, x3};
         float[] ys = {y0, y1, y2, y3};
         float[] zs = {z0, z1, z2, z3};

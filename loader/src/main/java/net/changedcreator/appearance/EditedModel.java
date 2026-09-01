@@ -524,19 +524,18 @@ public final class EditedModel {
             float[] origin = defaultOrigin;
             float s0 = resolvedStartScale > 0f ? resolvedStartScale : 0.05f;
             // Spawn window 3/6..5/6 of the linearly-timed 6s progression (= seconds
-            // 3..5). Blocks slide from the origin (parent joint or chosen "animFrom"
-            // block) to their target, scaling from the origin block's size; no hover.
-            // Inflating ALL blocks (not just custom ones) keeps the tint cover above
-            // the textured base drawn by the post-morph EditedModelLayer pass.
-            if (partialTick < 1f) {
-                float t = isCustom ? (partialTick - 0.5f) / (5f / 6f - 0.5f) : 1f;
+            // 3..5), inside Changed's morph segment. Blocks slide from the origin
+            // (parent joint or chosen "animFrom" block) to their target, scaling from
+            // the origin block's size — like vanilla, they may pass through the body.
+            if (isCustom && partialTick < 1f) {
+                float t = (partialTick - 0.5f) / (5f / 6f - 0.5f);
                 t = Math.max(0f, Math.min(1f, t));
                 t = 1f - (1f - t) * (1f - t) * (1f - t); // easeOutCubic
                 cx = origin[0] + (cx - origin[0]) * t;
                 cy = origin[1] + (cy - origin[1]) * t;
                 cz = origin[2] + (cz - origin[2]) * t;
                 pose.translate(cx / 16f, cy / 16f, cz / 16f);
-                float s = (s0 + (1f - s0) * t) * 1.04f; // inflated from center: fully cover the textured base (no z-fight)
+                float s = s0 + (1f - s0) * t;
                 pose.scale(s, s, s);
             } else {
                 pose.translate(cx / 16f, cy / 16f, cz / 16f);

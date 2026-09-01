@@ -523,14 +523,13 @@ public final class EditedModel {
             float cz = (min[2] + max[2]) / 2f;
             float[] origin = defaultOrigin;
             float s0 = resolvedStartScale > 0f ? resolvedStartScale : 0.05f;
-            // Spawn window 3/6..5/6 of the linearly-timed 6s progression (= seconds
-            // 3..5), inside Changed's morph segment. Blocks slide from the origin
-            // (parent joint or chosen "animFrom" block) to their target, scaling from
-            // the origin block's size — like vanilla, they may pass through the body.
+            // Spawn = vanilla cube-morph semantics: the caller passes the morph
+            // segment's ALREADY-EASED alpha, and blocks interpolate from their origin
+            // (parent joint or chosen "animFrom" block) to their target across the
+            // WHOLE segment — no sub-window, no second easing. Like vanilla, they may
+            // pass through the body on the way.
             if (isCustom && partialTick < 1f) {
-                float t = (partialTick - 0.5f) / (5f / 6f - 0.5f);
-                t = Math.max(0f, Math.min(1f, t));
-                t = 1f - (1f - t) * (1f - t) * (1f - t); // easeOutCubic
+                float t = Math.max(0f, Math.min(1f, partialTick));
                 cx = origin[0] + (cx - origin[0]) * t;
                 cy = origin[1] + (cy - origin[1]) * t;
                 cz = origin[2] + (cz - origin[2]) * t;

@@ -51,6 +51,15 @@ public abstract class TransfurAnimatorMixin {
 
     private static int changedcreator$lastLoggedPct = -1;
 
+    /** Same texture the entity's own renderer would use — mirrors EditedModelLayer's fallback. */
+    private static ResourceLocation changedcreator$rendererTextureOf(LivingEntity entity) {
+        var renderer = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(entity);
+        if (renderer instanceof net.minecraft.client.renderer.entity.LivingEntityRenderer<?, ?> ler) {
+            return ((net.minecraft.client.renderer.entity.LivingEntityRenderer<LivingEntity, ?>) ler).getTextureLocation(entity);
+        }
+        return null;
+    }
+
     @Inject(method = "renderMorphedLimb", remap = false,
             at = @At(value = "INVOKE", remap = false,
                     target = "Lnet/ltxprogrammer/changed/client/tfanimations/EntityGeometry;render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;IIFFFF)V"))
@@ -80,14 +89,20 @@ public abstract class TransfurAnimatorMixin {
         }
 
         // The editor blocks keep their REAL texture during the morph so the spawn
-        // animation is actually visible against the tinted morphing body (tinted
-        // blocks blended into the silhouette and were only seen popping in at the
-        // end). The tint shell is handled by EditedModelLayer's post-morph pass.
+        // animation is actually visible against the tinted morphing body. Texture
+        // fallback mirrors EditedModelLayer exactly (form texture, else the rendered
+        // entity's own skin) — a wrong fallback here showed up as untextured blocks.
         ResourceLocation tex = FormAppearance.getTextureForForm(formId);
+        if (tex == null) tex = changedcreator$rendererTextureOf(entity);
         if (tex == null) tex = EditedModel.getTintTexture();
         if (tex == null) return;
-        VertexConsumer vc = buffer.getBuffer(RenderType.entityTranslucent(tex));
+        // entityCutout writes depth: the blocks occlude (and are occluded by) the
+        // morphing body, other entities and terrain like any opaque geometry would.
+        VertexConsumer vc = buffer.getBuffer(RenderType.entityCutout(tex));
+        // Spawn progress = the SAME eased alpha driving this limb's morph — blocks
+        // interpolate across the whole segment like vanilla's paired cubes, instead
+        // of popping up in a sub-window of the global progression.
         edited.renderLimbSubtree(advanced, limbPart, humanoidPart, morphAlpha, poseStack, vc,
-                packedLight, OverlayTexture.NO_OVERLAY, progress);
+                packedLight, OverlayTexture.NO_OVERLAY, morphAlpha);
     }
 }

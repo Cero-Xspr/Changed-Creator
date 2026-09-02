@@ -344,7 +344,8 @@ public final class EditedModel {
             // from this known state, one step at a time.)
             if (isCustom && partialTick < 1f) {
                 float t = (partialTick - 0.5f) / (5f / 6f - 0.5f);
-                t = Math.max(0f, Math.min(1f, t));
+                if (t <= 0f) { pose.popPose(); return; } // before the window: invisible (used to show as 0.05-scale specks)
+                t = Math.min(1f, t);
                 t = 1f - (1f - t) * (1f - t) * (1f - t); // easeOutCubic
                 cx = origin[0] + (cx - origin[0]) * t;
                 cy = origin[1] + (cy - origin[1]) * t;

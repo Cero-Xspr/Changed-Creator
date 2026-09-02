@@ -55,8 +55,12 @@ public class EditedModelLayer extends RenderLayer<ChangedEntity, net.ltxprogramm
                     formId, String.format("%.2f", progress), edited.countCustomBlocks(), owner != null);
         }
         net.minecraft.resources.ResourceLocation tt = animating ? EditedModel.getTintTexture() : null;
+        // During the animation the capture-phase space carries a mirroring transform:
+        // symmetric blocks land in correct positions but their winding flips, so
+        // front faces get backface-culled (you saw the insides). No-cull renders
+        // both sides; depth still resolves the near side.
         VertexConsumer vc = buffer.getBuffer(
-                tt != null ? RenderType.entitySolid(tt) : RenderType.entityTranslucent(tex));
+                tt != null ? RenderType.entityCutoutNoCull(tt) : RenderType.entityTranslucent(tex));
         try {
             edited.render(this.getParentModel(), poseStack, vc, packedLight, OverlayTexture.NO_OVERLAY, progress, spawnOnly);
         } finally {

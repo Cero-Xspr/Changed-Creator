@@ -90,53 +90,11 @@ public final class EditedModel {
             JsonObject rootJson = json.has("root") && json.get("root").isJsonObject()
                     ? json.getAsJsonObject("root") : json;
             EditedModel parsed = new EditedModel(Node.parse(rootJson, true), mt);
-            parsed.resolveAnimOrigins();
             CACHE.put(formId, parsed);
             return parsed;
         } catch (Exception e) {
             return cached;
         }
-    }
-
-    /**
-     * Indexes cube ids (for animFrom lookups) and resolves each custom cube's starting
-     * scale: the block begins at roughly the origin block's size, like Changed's own
-     * cube morphing. The spawn POSITION is resolved per-frame in {@code renderLimbSubtree}
-     * through the real animated matrices (static pre-resolution disagreed with the
-     * morph-time pose chain — blocks emerged on the wrong side).
-     */
-    private void resolveAnimOrigins() {
-        if (root == null) return;
-        byId = new java.util.HashMap<>();
-        ownerById = new java.util.HashMap<>();
-        indexCubes(root, byId, ownerById);
-        forEachCube(root, c -> {
-            if (c.animFrom == null) return;
-            try {
-                Cube from = byId.get(c.animFrom);
-                if (from == null || c == from) return;
-                double vFrom = (from.max[0] - from.min[0]) * (from.max[1] - from.min[1]) * (from.max[2] - from.min[2]);
-                double vMy = (c.max[0] - c.min[0]) * (c.max[1] - c.min[1]) * (c.max[2] - c.min[2]);
-                if (vMy > 1e-6) {
-                    float ratio = (float) Math.cbrt(vFrom / vMy);
-                    c.resolvedStartScale = Math.max(0.05f, Math.min(8f, ratio));
-                }
-            } catch (Exception ignored) {
-            }
-        });
-    }
-
-    private Map<String, Cube> byId;
-    private Map<String, Node> ownerById;
-
-    private static void indexCubes(Node node, Map<String, Cube> byId, Map<String, Node> owner) {
-        for (Cube c : node.cubes) {
-            if (c.id != null) {
-                byId.putIfAbsent(c.id, c);
-                owner.putIfAbsent(c.id, node);
-            }
-        }
-        for (Node ch : node.children) indexCubes(ch, byId, owner);
     }
 
     private static void forEachCube(Node node, java.util.function.Consumer<Cube> fn) {
@@ -152,148 +110,6 @@ public final class EditedModel {
     public void render(Object model, PoseStack pose, VertexConsumer vc, int light, int overlay, float partialTick, boolean spawnOnly, boolean extractedOnly) {
         Map<String, ModelPart> named = collectNamedParts(model);
         renderNode(root, named, pose, vc, light, overlay, partialTick, spawnOnly, extractedOnly);
-    }
-
-    /**
-     * Morph-time render: draw only the subtree belonging to {@code limbPart}, inside
-     * the space Changed set up for that limb in {@code renderMorphedLimb} (the stack
-     * already carries the transitioned humanoid↔beast parent-chain matrix). The
-     * matched part itself gets the alpha-interpolated LOCAL pose (what Changed loads
-     * into its morph geometry) so blocks align with the morphing body; descendants
-     * keep their static local joints (Changed bakes those into its cubes too). Only
-     * custom cubes are drawn with the spawn animation; vanilla cubes are skipped
-     * (Changed morphs them itself).
-     */
-    public boolean renderLimbSubtree(Object model, ModelPart limbPart, ModelPart humanoidPart, float alpha,
-                                     PoseStack pose, VertexConsumer vc, int light, int overlay, float progress) {
-        if (root == null || limbPart == null) return false;
-        Map<String, ModelPart> named = collectNamedParts(model);
-        // Walk the tree with the SAME transforms the draw pass uses (transition pose on
-        // the matched limb part, live/static elsewhere) and record each animFrom origin
-        // block's center in root space, so spawn points ride the real animated joints.
-        Map<Node, Matrix4f> world = new java.util.IdentityHashMap<>();
-        collectRenderWorld(root, named, limbPart, humanoidPart, alpha, new Matrix4f(), world);
-        Map<Cube, Vector3f> originWorld = new java.util.IdentityHashMap<>();
-        if (byId != null) {
-            forEachCube(root, c -> {
-                if (c.animFrom == null) return;
-                Cube from = byId.get(c.animFrom);
-                Node fromNode = ownerById.get(c.animFrom);
-                if (from == null || fromNode == null) return;
-                Matrix4f w = world.get(fromNode);
-                if (w == null) return;
-                originWorld.put(c, w.transformPosition(new Vector3f(
-                        (from.min[0] + from.max[0]) / 2f / 16f,
-                        (from.min[1] + from.max[1]) / 2f / 16f,
-                        (from.min[2] + from.max[2]) / 2f / 16f)));
-            });
-        }
-        return renderPruned(root, named, limbPart, humanoidPart, alpha, false, originWorld, pose, vc, light, overlay, progress);
-    }
-
-    /** Mirrors the draw pass exactly: transition pose on the matched node, live/static elsewhere. */
-    private void collectRenderWorld(Node node, Map<String, ModelPart> named, ModelPart limbPart, ModelPart humanoidPart,
-                                    float alpha, Matrix4f parentWorld, Map<Node, Matrix4f> out) {
-        ModelPart live = named.get(node.name);
-        Matrix4f m = new Matrix4f(parentWorld);
-        if (live == limbPart && humanoidPart != null) {
-            m.translate(lerp(humanoidPart.x, live.x, alpha) / 16f,
-                    lerp(humanoidPart.y, live.y, alpha) / 16f,
-                    lerp(humanoidPart.z, live.z, alpha) / 16f);
-            m.rotate(Axis.ZP.rotation(lerp(humanoidPart.zRot, live.zRot, alpha)));
-            m.rotate(Axis.YP.rotation(lerp(humanoidPart.yRot, live.yRot, alpha)));
-            m.rotate(Axis.XP.rotation(lerp(humanoidPart.xRot, live.xRot, alpha)));
-            m.scale(lerp(humanoidPart.xScale, live.xScale, alpha),
-                    lerp(humanoidPart.yScale, live.yScale, alpha),
-                    lerp(humanoidPart.zScale, live.zScale, alpha));
-        } else if (live != null) {
-            m.translate(live.x / 16f, live.y / 16f, live.z / 16f);
-            m.rotate(Axis.ZP.rotation(live.zRot));
-            m.rotate(Axis.YP.rotation(live.yRot));
-            m.rotate(Axis.XP.rotation(live.xRot));
-            if (live.xScale != 1f || live.yScale != 1f || live.zScale != 1f) m.scale(live.xScale, live.yScale, live.zScale);
-        } else {
-            m.translate(node.pos[0] / 16f, node.pos[1] / 16f, node.pos[2] / 16f);
-            m.rotate(Axis.ZP.rotation(node.rot[2]));
-            m.rotate(Axis.YP.rotation(node.rot[1]));
-            m.rotate(Axis.XP.rotation(node.rot[0]));
-        }
-        out.put(node, m);
-        for (Node ch : node.children) collectRenderWorld(ch, named, limbPart, humanoidPart, alpha, m, out);
-    }
-
-    private static float lerp(float a, float b, float t) {
-        t = Math.max(0f, Math.min(1f, t));
-        return a + (b - a) * t;
-    }
-
-    private boolean renderPruned(Node node, Map<String, ModelPart> named, ModelPart part, ModelPart humanoidPart,
-                                 float alpha, boolean found, Map<Cube, Vector3f> originWorld,
-                                 PoseStack pose, VertexConsumer vc, int light, int overlay, float progress) {
-        ModelPart live = named.get(node.name);
-        boolean here = !found && live == part;
-        if (!found && !here && !subtreeHasPart(node, named, part)) return false;
-        pose.pushPose();
-        if (here && live != null && humanoidPart != null) {
-            applyTransitionPose(pose, humanoidPart, live, alpha);
-        } else if (live != null) {
-            live.translateAndRotate(pose);
-        } else {
-            pose.translate(node.pos[0] / 16f, node.pos[1] / 16f, node.pos[2] / 16f);
-            pose.mulPose(Axis.ZP.rotation(node.rot[2]));
-            pose.mulPose(Axis.YP.rotation(node.rot[1]));
-            pose.mulPose(Axis.XP.rotation(node.rot[0]));
-        }
-        if (here || found) {
-            for (Cube cube : node.cubes) {
-                if (!cube.isCustom) continue;
-                // animFrom spawn point: the origin block's center recorded in root space
-                // this frame, pulled back into THIS node's local space via the real
-                // (animated) matrix — so blocks fly out of the moving origin block.
-                float[] origin = new float[]{0, 0, 0};
-                Vector3f ow = originWorld != null ? originWorld.get(cube) : null;
-                if (ow != null) {
-                    Vector3f local = new Matrix4f(pose.last().pose()).invert().transformPosition(new Vector3f(ow));
-                    origin = new float[]{local.x * 16f, local.y * 16f, local.z * 16f};
-                }
-                cube.emit(pose, vc, light, overlay, progress, origin);
-            }
-        }
-        for (Node child : node.children)
-            renderPruned(child, named, part, humanoidPart, alpha, found || here, originWorld, pose, vc, light, overlay, progress);
-        pose.popPose();
-        return here || found;
-    }
-
-    /**
-     * The matched part's LOCAL pose, alpha-interpolated humanoid→beast exactly like
-     * Changed's {@code transitionModelPose} (the captured poses equal the parts'
-     * current frozen fields). Keeps our cubes glued to the morphing body.
-     */
-    private static void applyTransitionPose(PoseStack pose, ModelPart humanoid, ModelPart beast, float alpha) {
-        float t = Math.max(0f, Math.min(1f, alpha));
-        pose.translate(
-                (humanoid.x + (beast.x - humanoid.x) * t) / 16f,
-                (humanoid.y + (beast.y - humanoid.y) * t) / 16f,
-                (humanoid.z + (beast.z - humanoid.z) * t) / 16f);
-        float zr = humanoid.zRot + (beast.zRot - humanoid.zRot) * t;
-        float yr = humanoid.yRot + (beast.yRot - humanoid.yRot) * t;
-        float xr = humanoid.xRot + (beast.xRot - humanoid.xRot) * t;
-        if (zr != 0 || yr != 0 || xr != 0) {
-            pose.mulPose(Axis.ZP.rotation(zr));
-            pose.mulPose(Axis.YP.rotation(yr));
-            pose.mulPose(Axis.XP.rotation(xr));
-        }
-        float xs = humanoid.xScale + (beast.xScale - humanoid.xScale) * t;
-        float ys = humanoid.yScale + (beast.yScale - humanoid.yScale) * t;
-        float zs = humanoid.zScale + (beast.zScale - humanoid.zScale) * t;
-        if (xs != 1f || ys != 1f || zs != 1f) pose.scale(xs, ys, zs);
-    }
-
-    private static boolean subtreeHasPart(Node node, Map<String, ModelPart> named, ModelPart part) {
-        if (named.get(node.name) == part) return true;
-        for (Node ch : node.children) if (subtreeHasPart(ch, named, part)) return true;
-        return false;
     }
 
     private void renderNode(Node node, Map<String, ModelPart> named, PoseStack pose, VertexConsumer vc, int light, int overlay, float partialTick, boolean spawnOnly, boolean extractedOnly) {
@@ -522,19 +338,19 @@ public final class EditedModel {
             float cy = (min[1] + max[1]) / 2f;
             float cz = (min[2] + max[2]) / 2f;
             float[] origin = defaultOrigin;
-            float s0 = resolvedStartScale > 0f ? resolvedStartScale : 0.05f;
-            // Spawn = vanilla cube-morph semantics: the caller passes the morph
-            // segment's ALREADY-EASED alpha, and blocks interpolate from their origin
-            // (parent joint or chosen "animFrom" block) to their target across the
-            // WHOLE segment — no sub-window, no second easing. Like vanilla, they may
-            // pass through the body on the way.
+            // [BASELINE 833f2c9] Spawn window 3/6..5/6 of the linearly-timed 6s
+            // progression (= seconds 3..5). Blocks slide from the part center and
+            // grow; no hover hold. (Rolled back per user request — re-fix forward
+            // from this known state, one step at a time.)
             if (isCustom && partialTick < 1f) {
-                float t = Math.max(0f, Math.min(1f, partialTick));
+                float t = (partialTick - 0.5f) / (5f / 6f - 0.5f);
+                t = Math.max(0f, Math.min(1f, t));
+                t = 1f - (1f - t) * (1f - t) * (1f - t); // easeOutCubic
                 cx = origin[0] + (cx - origin[0]) * t;
                 cy = origin[1] + (cy - origin[1]) * t;
                 cz = origin[2] + (cz - origin[2]) * t;
                 pose.translate(cx / 16f, cy / 16f, cz / 16f);
-                float s = s0 + (1f - s0) * t;
+                float s = Math.max(0.05f, t);
                 pose.scale(s, s, s);
             } else {
                 pose.translate(cx / 16f, cy / 16f, cz / 16f);

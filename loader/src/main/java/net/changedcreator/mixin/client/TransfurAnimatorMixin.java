@@ -1,18 +1,12 @@
 package net.changedcreator.mixin.client;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.changedcreator.appearance.EditedModel;
 import net.changedcreator.appearance.EditedModelLayer;
 import net.changedcreator.appearance.EditedPlayerLayer;
-import net.changedcreator.appearance.FormAppearance;
-import net.ltxprogrammer.changed.client.animations.Limb;
 import net.ltxprogrammer.changed.client.renderer.model.AdvancedHumanoidModel;
 import net.ltxprogrammer.changed.client.tfanimations.TransfurAnimator;
 import net.ltxprogrammer.changed.process.ProcessTransfur;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
-import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.layers.RenderLayer;
@@ -27,17 +21,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Changed's {@code isLayerAllowed} only lets its own armor/accessory layers render
- * during the transfur transition, which drops our layers. Force them through.
+ * [RESTORED to pre-takeover state (fde46494) per user request.]
  *
- * <p>The real humanoid→beast morph is drawn per-limb in {@code renderMorphedLimb}:
- * it pushes the TRANSITIONED parent-chain matrix (captured humanoid ↔ beast pose,
- * alpha-interpolated) onto the PoseStack via {@code setPose}, then calls
- * {@code EntityGeometry.render}. Injecting right at that call lets the editor's
- * added cubes be drawn inside the exact animated limb space — they grow out of the
- * MOVING morph joint instead of the static beast pose. (Rendering at
- * {@code renderMorphedEntity} RETURN would use the raw stack without the entity
- * orientation transforms — front/back mirrored — and a balanced, pose-free stack.)
+ * Changed's {@code isLayerAllowed} only lets its own armor/accessory layers render
+ * during the transfur transition, which drops our layers. Allow them through.
+ *
+ * Also hooks {@code renderMorphedEntity}: by the time it returns, the advanced
+ * (beast) model's parts carry the morph pose; the edited model is rendered with
+ * the pure tint texture (spawnOnly).
  */
 @Mixin(TransfurAnimator.class)
 public abstract class TransfurAnimatorMixin {
@@ -49,60 +40,30 @@ public abstract class TransfurAnimatorMixin {
         }
     }
 
-    private static int changedcreator$lastLoggedPct = -1;
-
-    /** Same texture the entity's own renderer would use — mirrors EditedModelLayer's fallback. */
-    private static ResourceLocation changedcreator$rendererTextureOf(LivingEntity entity) {
-        var renderer = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(entity);
-        if (renderer instanceof net.minecraft.client.renderer.entity.LivingEntityRenderer<?, ?> ler) {
-            return ((net.minecraft.client.renderer.entity.LivingEntityRenderer<LivingEntity, ?>) ler).getTextureLocation(entity);
+    @Inject(method = "renderMorphedEntity", at = @At("RETURN"), remap = false)
+    private static void changedcreator$renderMorphedEditedModel(
+            LivingEntity entity, HumanoidModel<?> humanoid, AdvancedHumanoidModel<?> advanced,
+            float limbSwing, float limbSwingAmount, net.ltxprogrammer.changed.util.Color3 color,
+            float progression, com.mojang.blaze3d.vertex.PoseStack poseStack,
+            MultiBufferSource buffer, int packedLight, ResourceLocation texture, boolean b,
+            CallbackInfo ci) {
+        ResourceLocation formId = null;
+        if (entity instanceof Player p) {
+            var vi = ProcessTransfur.getPlayerTransfurVariant(p);
+            if (vi != null) formId = vi.getFormId();
         }
-        return null;
-    }
-
-    @Inject(method = "renderMorphedLimb", remap = false,
-            at = @At(value = "INVOKE", remap = false,
-                    target = "Lnet/ltxprogrammer/changed/client/tfanimations/EntityGeometry;render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;IIFFFF)V"))
-    private static void changedcreator$renderEditedInMorphLimb(
-            LivingEntity entity, Limb limb, HumanoidModel<?> humanoid, AdvancedHumanoidModel<?> advanced,
-            float limbSwing, float limbSwingAmount, net.ltxprogrammer.changed.util.Color3 color, float morphAlpha,
-            PoseStack poseStack, MultiBufferSource buffer, int packedLight, ResourceLocation texture,
-            boolean flagA, boolean flagB, CallbackInfo ci) {
-        Player owner = entity instanceof Player p ? p : FormAppearance.getPlayerOfEntity(entity);
-        if (owner == null) owner = FormAppearance.RENDERING_PLAYER.get();
-        if (owner == null) return;
-        var vi = ProcessTransfur.getPlayerTransfurVariant(owner);
-        if (vi == null) return;
-        ResourceLocation formId = vi.getFormId();
+        if (formId == null) return;
         EditedModel edited = EditedModel.get(formId);
-        if (edited == null || edited.countCustomBlocks() == 0) return;
-        ModelPart limbPart = limb.getModelPart(advanced);
-        if (limbPart == null) return;
-        ModelPart humanoidPart = limb.getModelPart(humanoid);
-        float progress = vi.getTransfurProgression(Minecraft.getInstance().getPartialTick());
-
-        int pct = (int) (progress * 100f);
-        if (pct < changedcreator$lastLoggedPct) changedcreator$lastLoggedPct = -1;
-        if (pct != changedcreator$lastLoggedPct) {
-            changedcreator$lastLoggedPct = pct;
-            com.mojang.logging.LogUtils.getLogger().info("[CC-morph] limb-rendering active, progress={}%", pct);
+        if (edited == null) return;
+        EditedModel.TINT.set(new float[]{color.red() * 255f, color.green() * 255f, color.blue() * 255f});
+        ResourceLocation tt = EditedModel.getTintTexture();
+        if (tt == null) return;
+        var vc = buffer.getBuffer(RenderType.entitySolid(tt));
+        try {
+            edited.render(advanced, poseStack, vc, packedLight, OverlayTexture.NO_OVERLAY,
+                    progression, true);
+        } finally {
+            EditedModel.TINT.set(null);
         }
-
-        // The editor blocks keep their REAL texture during the morph so the spawn
-        // animation is actually visible against the tinted morphing body. Texture
-        // fallback mirrors EditedModelLayer exactly (form texture, else the rendered
-        // entity's own skin) — a wrong fallback here showed up as untextured blocks.
-        ResourceLocation tex = FormAppearance.getTextureForForm(formId);
-        if (tex == null) tex = changedcreator$rendererTextureOf(entity);
-        if (tex == null) tex = EditedModel.getTintTexture();
-        if (tex == null) return;
-        // entityCutout writes depth: the blocks occlude (and are occluded by) the
-        // morphing body, other entities and terrain like any opaque geometry would.
-        VertexConsumer vc = buffer.getBuffer(RenderType.entityCutout(tex));
-        // Spawn progress = the SAME eased alpha driving this limb's morph — blocks
-        // interpolate across the whole segment like vanilla's paired cubes, instead
-        // of popping up in a sub-window of the global progression.
-        edited.renderLimbSubtree(advanced, limbPart, humanoidPart, morphAlpha, poseStack, vc,
-                packedLight, OverlayTexture.NO_OVERLAY, morphAlpha);
     }
 }

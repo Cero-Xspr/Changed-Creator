@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import net.changedcreator.editor.ModelExtractor;
+import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix3f;
@@ -118,21 +119,37 @@ public final class EditedModel {
     }
 
     /**
-     * Morph-time render (step 2): draw only the subtree belonging to {@code limbPart},
-     * inside the space Changed set up for that limb in {@code renderMorphedLimb} (the
-     * stack already carries the transitioned humanoid↔beast parent-chain matrix). The
-     * matched part itself gets the alpha-interpolated LOCAL pose (what Changed loads
-     * into its morph geometry) so blocks stay glued to the morphing body; descendants
-     * keep their static local joints (Changed bakes those into its cubes too).
-     * animFrom spawn origins are resolved THIS FRAME through the same transforms the
-     * draw pass uses, so blocks fly out of the moving origin block.
+     * Morph-segment render (hook-free): draw the custom blocks with the TRANSITIONED
+     * pose — exactly the interpolation Changed's {@code transitionModelPose} does —
+     * computed ourselves from public data:
+     * <ul>
+     *   <li>limb pairing from the public {@code Limb} enum (humanoid part ↔ advanced
+     *       part),</li>
+     *   <li>both sides' poses from the model parts' frozen fields (capture wrote
+     *       exactly those into {@code CAPTURED_MODELS}),</li>
+     *   <li>{@code alpha} = {@code easeInOutSine(getMorphAlpha(transfurProgression))},
+     *       the same expression renderTransfurringPlayer uses.</li>
+     * </ul>
+     * The walk happens in THIS layer's space (the changed-entity render space, the
+     * same base the capture used), ancestors contribute their static captured
+     * transforms, the limb-root node contributes the lerped local pose. animFrom
+     * spawn origins are resolved this frame through the very same transforms.
      */
-    public boolean renderLimbSubtree(Object model, ModelPart limbPart, ModelPart humanoidPart, float alpha,
-                                     PoseStack pose, VertexConsumer vc, int light, int overlay, float progress) {
-        if (root == null || limbPart == null) return false;
-        Map<String, ModelPart> named = collectNamedParts(model);
+    public boolean renderMorphSegment(Object advancedModel, HumanoidModel<?> humanoidModel, float alpha,
+                                      PoseStack pose, VertexConsumer vc, int light, int overlay, float progress) {
+        if (root == null) return false;
+        Map<String, ModelPart> named = collectNamedParts(advancedModel);
+        Map<ModelPart, ModelPart> pairs = new java.util.IdentityHashMap<>();
+        for (net.ltxprogrammer.changed.client.animations.Limb limb : net.ltxprogrammer.changed.client.animations.Limb.values()) {
+            try {
+                ModelPart ap = limb.getModelPart((net.ltxprogrammer.changed.client.renderer.model.AdvancedHumanoidModel<?>) advancedModel);
+                ModelPart hp = humanoidModel != null ? limb.getModelPart(humanoidModel) : null;
+                if (ap != null && hp != null) pairs.put(ap, hp);
+            } catch (Exception ignored) {
+            }
+        }
         Map<Node, Matrix4f> world = new java.util.IdentityHashMap<>();
-        collectRenderWorld(root, named, limbPart, humanoidPart, alpha, new Matrix4f(), world);
+        collectRenderWorld(root, named, pairs, alpha, new Matrix4f(), world);
         Map<Cube, Vector3f> originWorld = new java.util.IdentityHashMap<>();
         if (byId != null) {
             forEachCube(root, c -> {
@@ -148,21 +165,22 @@ public final class EditedModel {
                         (from.min[2] + from.max[2]) / 2f / 16f)));
             });
         }
-        return renderPruned(root, named, limbPart, humanoidPart, alpha, false, originWorld, pose, vc, light, overlay, progress);
+        return renderMorphNode(root, named, pairs, alpha, false, originWorld, pose, vc, light, overlay, progress);
     }
 
-    /** Mirrors the draw pass exactly: transition pose on the matched node, live/static elsewhere. */
-    private void collectRenderWorld(Node node, Map<String, ModelPart> named, ModelPart limbPart, ModelPart humanoidPart,
-                                    float alpha, Matrix4f parentWorld, Map<Node, Matrix4f> out) {
+    /** Mirrors the draw pass: lerped pose on limb-root nodes, static captured pose elsewhere. */
+    private void collectRenderWorld(Node node, Map<String, ModelPart> named, Map<ModelPart, ModelPart> pairs, float alpha,
+                                    Matrix4f parentWorld, Map<Node, Matrix4f> out) {
         ModelPart live = named.get(node.name);
         Matrix4f m = new Matrix4f(parentWorld);
-        if (live == limbPart && humanoidPart != null) {
-            m.translate(lerp(humanoidPart.x, live.x, alpha) / 16f,
-                    lerp(humanoidPart.y, live.y, alpha) / 16f,
-                    lerp(humanoidPart.z, live.z, alpha) / 16f);
-            m.rotate(Axis.ZP.rotation(lerp(humanoidPart.zRot, live.zRot, alpha)));
-            m.rotate(Axis.YP.rotation(lerp(humanoidPart.yRot, live.yRot, alpha)));
-            m.rotate(Axis.XP.rotation(lerp(humanoidPart.xRot, live.xRot, alpha)));
+        ModelPart humanoid = live != null ? pairs.get(live) : null;
+        if (live != null && humanoid != null) {
+            m.translate(lerp(humanoid.x, live.x, alpha) / 16f,
+                    lerp(humanoid.y, live.y, alpha) / 16f,
+                    lerp(humanoid.z, live.z, alpha) / 16f);
+            m.rotate(Axis.ZP.rotation(lerp(humanoid.zRot, live.zRot, alpha)));
+            m.rotate(Axis.YP.rotation(lerp(humanoid.yRot, live.yRot, alpha)));
+            m.rotate(Axis.XP.rotation(lerp(humanoid.xRot, live.xRot, alpha)));
         } else if (live != null) {
             m.translate(live.x / 16f, live.y / 16f, live.z / 16f);
             m.rotate(Axis.ZP.rotation(live.zRot));
@@ -175,7 +193,7 @@ public final class EditedModel {
             m.rotate(Axis.XP.rotation(node.rot[0]));
         }
         out.put(node, m);
-        for (Node ch : node.children) collectRenderWorld(ch, named, limbPart, humanoidPart, alpha, m, out);
+        for (Node ch : node.children) collectRenderWorld(ch, named, pairs, alpha, m, out);
     }
 
     private static float lerp(float a, float b, float t) {
@@ -183,15 +201,16 @@ public final class EditedModel {
         return a + (b - a) * t;
     }
 
-    private boolean renderPruned(Node node, Map<String, ModelPart> named, ModelPart part, ModelPart humanoidPart,
-                                 float alpha, boolean found, Map<Cube, Vector3f> originWorld,
-                                 PoseStack pose, VertexConsumer vc, int light, int overlay, float progress) {
+    private boolean renderMorphNode(Node node, Map<String, ModelPart> named, Map<ModelPart, ModelPart> pairs, float alpha,
+                                    boolean found, Map<Cube, Vector3f> originWorld,
+                                    PoseStack pose, VertexConsumer vc, int light, int overlay, float progress) {
         ModelPart live = named.get(node.name);
-        boolean here = !found && live == part;
-        if (!found && !here && !subtreeHasPart(node, named, part)) return false;
+        ModelPart humanoid = live != null ? pairs.get(live) : null;
+        boolean here = !found && live != null && humanoid != null;
+        if (!found && !here && !subtreeHasPair(node, named, pairs)) return false;
         pose.pushPose();
-        if (here && live != null && humanoidPart != null) {
-            applyTransitionPose(pose, humanoidPart, live, alpha);
+        if (here) {
+            applyTransitionPose(pose, humanoid, live, alpha);
         } else if (live != null) {
             live.translateAndRotate(pose);
         } else {
@@ -204,8 +223,8 @@ public final class EditedModel {
             for (Cube cube : node.cubes) {
                 if (!cube.isCustom) continue;
                 // animFrom spawn point: the origin block's center recorded in root space
-                // this frame, pulled back into THIS node's local space via the real
-                // (animated) matrix — so blocks fly out of the moving origin block.
+                // this frame, pulled back into THIS node's local space via the same
+                // (animated) transform — blocks fly out of the moving origin block.
                 float[] origin = new float[]{0, 0, 0};
                 Vector3f ow = originWorld != null ? originWorld.get(cube) : null;
                 if (ow != null) {
@@ -216,15 +235,15 @@ public final class EditedModel {
             }
         }
         for (Node child : node.children)
-            renderPruned(child, named, part, humanoidPart, alpha, found || here, originWorld, pose, vc, light, overlay, progress);
+            renderMorphNode(child, named, pairs, alpha, found || here, originWorld, pose, vc, light, overlay, progress);
         pose.popPose();
         return here || found;
     }
 
     /**
-     * The matched part's LOCAL pose, alpha-interpolated humanoid→beast exactly like
-     * Changed's {@code transitionModelPose} (the captured poses equal the parts'
-     * current frozen fields). Keeps our cubes glued to the morphing body.
+     * The matched limb-root's LOCAL pose, alpha-interpolated humanoid→beast exactly
+     * like Changed's {@code transitionModelPose} (both sides' poses equal the parts'
+     * frozen fields — capture stored {@code part.getPose()}).
      */
     private static void applyTransitionPose(PoseStack pose, ModelPart humanoid, ModelPart beast, float alpha) {
         float t = Math.max(0f, Math.min(1f, alpha));
@@ -242,9 +261,10 @@ public final class EditedModel {
         }
     }
 
-    private static boolean subtreeHasPart(Node node, Map<String, ModelPart> named, ModelPart part) {
-        if (named.get(node.name) == part) return true;
-        for (Node ch : node.children) if (subtreeHasPart(ch, named, part)) return true;
+    private static boolean subtreeHasPair(Node node, Map<String, ModelPart> named, Map<ModelPart, ModelPart> pairs) {
+        ModelPart live = named.get(node.name);
+        if (live != null && pairs.containsKey(live)) return true;
+        for (Node ch : node.children) if (subtreeHasPair(ch, named, pairs)) return true;
         return false;
     }
 

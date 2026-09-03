@@ -45,12 +45,38 @@ public class EditedModelLayer extends RenderLayer<ChangedEntity, net.ltxprogramm
             if (owner == null) owner = FormAppearance.RENDERING_PLAYER.get();
             var vi = owner != null ? ProcessTransfur.getPlayerTransfurVariant(owner) : null;
             if (vi != null) progress = vi.getTransfurProgression(partialTick);
-            // Morph segment (progress < ~0.85, where Changed's morph geometry renders):
-            // TransfurAnimatorMixin draws the blocks in the animated limb space — this
-            // layer must NOT (it would duplicate them in the static capture pose).
-            // Past the segment the hook no longer runs, so this layer takes over; the
-            // handover is seamless because the morph pose at alpha=1 IS this static pose.
-            if (progress < 0.85f) return;
+            // ---- Morph segment (progress < ~0.85, where Changed's morph geometry renders):
+            // compute the transitioned pose OURSELVES (no hook): humanoid part poses
+            // (frozen player model) ↔ beast part poses (frozen advanced model), lerped
+            // by the same eased alpha Changed uses in renderTransfurringPlayer.
+            if (progress < 0.85f) {
+                if (vi == null) return;
+                var renderer = net.minecraft.client.Minecraft.getInstance()
+                        .getEntityRenderDispatcher().getRenderer(owner);
+                net.minecraft.client.model.EntityModel<?> pm = renderer instanceof
+                        net.minecraft.client.renderer.entity.LivingEntityRenderer<?, ?> ler ? ler.getModel() : null;
+                net.minecraft.client.model.HumanoidModel<?> humanoid =
+                        pm instanceof net.minecraft.client.model.HumanoidModel<?> hm ? hm : null;
+                float raw = net.ltxprogrammer.changed.client.tfanimations.TransfurAnimator.getMorphAlpha(progress);
+                float alpha = (float) (-(Math.cos(Math.PI * Math.max(0f, Math.min(1f, raw))) - 1d) / 2d); // easeInOutSine
+                var tint = FormAppearance.getTintForForm(formId);
+                EditedModel.TINT.set(tint != null
+                        ? new float[]{tint.red() * 255f, tint.green() * 255f, tint.blue() * 255f} : null);
+                ResourceLocation tt = EditedModel.getTintTexture();
+                if (tt == null) return;
+                VertexConsumer vc = buffer.getBuffer(RenderType.entityCutoutNoCull(tt));
+                try {
+                    // spawnOnly=true: only editor-created blocks, spawn-animated
+                    edited.renderMorphSegment(this.getParentModel(), humanoid, alpha, poseStack, vc,
+                            packedLight, OverlayTexture.NO_OVERLAY, progress);
+                } finally {
+                    EditedModel.TINT.set(null);
+                }
+                return;
+            }
+            // ---- Post-morph segment: the morph geometry is gone; this layer draws the
+            // blocks at the static captured pose. The handover is seamless because the
+            // morph pose at alpha=1 IS this static pose.
             var tint = FormAppearance.getTintForForm(formId);
             EditedModel.TINT.set(tint != null
                     ? new float[]{tint.red() * 255f, tint.green() * 255f, tint.blue() * 255f} : null);

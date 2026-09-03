@@ -24,6 +24,8 @@ public class EditedModelLayer extends RenderLayer<ChangedEntity, net.ltxprogramm
         super(parent);
     }
 
+    private static boolean changedcreator$loggedThisMorph;
+
     @Override
     public void render(PoseStack poseStack, MultiBufferSource buffer, int packedLight,
                        ChangedEntity entity, float limbSwing, float limbSwingAmount, float partialTick,
@@ -37,6 +39,7 @@ public class EditedModelLayer extends RenderLayer<ChangedEntity, net.ltxprogramm
         // blocks (isCustom) in the tint color, each sliding from the parent center.
         boolean animating = net.ltxprogrammer.changed.client.tfanimations.TransfurAnimator.isCapturing();
         boolean spawnOnly = animating;
+        if (!animating) changedcreator$loggedThisMorph = false;
         ResourceLocation tex = FormAppearance.getTextureForForm(formId);
         if (tex == null) tex = this.getTextureLocation(entity);
         float progress = 1f;
@@ -59,6 +62,13 @@ public class EditedModelLayer extends RenderLayer<ChangedEntity, net.ltxprogramm
                         pm instanceof net.minecraft.client.model.HumanoidModel<?> hm ? hm : null;
                 float raw = net.ltxprogrammer.changed.client.tfanimations.TransfurAnimator.getMorphAlpha(progress);
                 float alpha = (float) (-(Math.cos(Math.PI * Math.max(0f, Math.min(1f, raw))) - 1d) / 2d); // easeInOutSine
+                if (!changedcreator$loggedThisMorph) {
+                    changedcreator$loggedThisMorph = true;
+                    com.mojang.logging.LogUtils.getLogger().info(
+                            "[CC-diag] morph segment enter: humanoid={}, progress={}, alpha={}",
+                            humanoid != null ? humanoid.getClass().getName() : "NULL(player renderer model is not HumanoidModel)",
+                            String.format("%.3f", progress), String.format("%.3f", alpha));
+                }
                 var tint = FormAppearance.getTintForForm(formId);
                 EditedModel.TINT.set(tint != null
                         ? new float[]{tint.red() * 255f, tint.green() * 255f, tint.blue() * 255f} : null);

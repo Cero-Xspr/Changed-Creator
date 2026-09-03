@@ -32,6 +32,7 @@ public final class EditedModel {
     public static final ThreadLocal<float[]> TINT = ThreadLocal.withInitial(() -> null);
 
     private static net.minecraft.resources.ResourceLocation tintTex = null;
+    private static long lastEmptyPairWarn;
 
     // animFrom index (cube id -> cube / owning node), built at load
     private Map<String, Cube> byId;
@@ -146,6 +147,16 @@ public final class EditedModel {
                 ModelPart hp = humanoidModel != null ? limb.getModelPart(humanoidModel) : null;
                 if (ap != null && hp != null) pairs.put(ap, hp);
             } catch (Exception ignored) {
+            }
+        }
+        if (pairs.isEmpty()) {
+            long now = System.nanoTime();
+            if (now - lastEmptyPairWarn > 1_000_000_000L) {
+                lastEmptyPairWarn = now;
+                com.mojang.logging.LogUtils.getLogger().info(
+                        "[CC-diag] limb pairing EMPTY (humanoid={} advanced={}); blocks cannot follow the morph",
+                        humanoidModel != null ? humanoidModel.getClass().getName() : "null",
+                        advancedModel != null ? advancedModel.getClass().getName() : "null");
             }
         }
         Map<Node, Matrix4f> world = new java.util.IdentityHashMap<>();

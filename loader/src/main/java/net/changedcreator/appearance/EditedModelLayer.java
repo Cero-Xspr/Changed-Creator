@@ -41,18 +41,19 @@ public class EditedModelLayer extends RenderLayer<ChangedEntity, net.ltxprogramm
         if (tex == null) tex = this.getTextureLocation(entity);
         float progress = 1f;
         if (animating) {
-            var tint = FormAppearance.getTintForForm(formId);
-            EditedModel.TINT.set(tint != null
-                    ? new float[]{tint.red() * 255f, tint.green() * 255f, tint.blue() * 255f} : null);
-            // Real spawn animation: blocks slide from the parent center to their
-            // target as the transfur progression goes 0 -> 1.
             Player owner = FormAppearance.getPlayerOfEntity(entity);
             if (owner == null) owner = FormAppearance.RENDERING_PLAYER.get();
             var vi = owner != null ? ProcessTransfur.getPlayerTransfurVariant(owner) : null;
             if (vi != null) progress = vi.getTransfurProgression(partialTick);
-            com.mojang.logging.LogUtils.getLogger().info(
-                    "[CC-anim] form={} progress={} customBlocks={} owner={}",
-                    formId, String.format("%.2f", progress), edited.countCustomBlocks(), owner != null);
+            // Morph segment (progress < ~0.85, where Changed's morph geometry renders):
+            // TransfurAnimatorMixin draws the blocks in the animated limb space — this
+            // layer must NOT (it would duplicate them in the static capture pose).
+            // Past the segment the hook no longer runs, so this layer takes over; the
+            // handover is seamless because the morph pose at alpha=1 IS this static pose.
+            if (progress < 0.85f) return;
+            var tint = FormAppearance.getTintForForm(formId);
+            EditedModel.TINT.set(tint != null
+                    ? new float[]{tint.red() * 255f, tint.green() * 255f, tint.blue() * 255f} : null);
         }
         net.minecraft.resources.ResourceLocation tt = animating ? EditedModel.getTintTexture() : null;
         // During the animation the capture-phase space carries a mirroring transform:
